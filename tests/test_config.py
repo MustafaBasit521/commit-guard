@@ -74,19 +74,28 @@ def test_ignore_paths_must_be_list_of_strings(tmp_path):
 def test_ai_defaults_are_off(tmp_path):
     ai = load_config(tmp_path).ai
     assert ai.enabled is False
-    assert ai.model == "claude-opus-5"
+    assert ai.provider == "anthropic"
+    assert ai.model == ""
     assert ai.max_findings == 3
 
 
 def test_ai_config_is_read(tmp_path):
     write_config(
         tmp_path,
-        '[ai]\nenabled = true\nmodel = "claude-sonnet-5"\nmax_findings = 1\n',
+        '[ai]\nenabled = true\nprovider = "gemini"\n'
+        'model = "gemini-2.5-pro"\nmax_findings = 1\n',
     )
     ai = load_config(tmp_path).ai
     assert ai.enabled is True
-    assert ai.model == "claude-sonnet-5"
+    assert ai.provider == "gemini"
+    assert ai.model == "gemini-2.5-pro"
     assert ai.max_findings == 1
+
+
+def test_ai_provider_must_be_known(tmp_path):
+    write_config(tmp_path, '[ai]\nprovider = "openai"\n')
+    with pytest.raises(ConfigError, match="ai.provider"):
+        load_config(tmp_path)
 
 
 def test_ai_max_findings_must_be_positive_int(tmp_path):

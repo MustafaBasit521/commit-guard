@@ -1,18 +1,20 @@
-"""Optional AI remediation suggestions.
+"""Optional AI remediation suggestions - advisory, never changes the block.
 
-Off by default. Runs only when *all* of these hold:
+Runs only when all of these hold:
 
 * ``[ai] enabled = true`` in ``.git-security-tool.toml``
-* ``ANTHROPIC_API_KEY`` is set in the environment
-* the ``anthropic`` package is installed (``pip install 'git-security-tool[ai]'``)
+* the configured provider's API key is set (``ANTHROPIC_API_KEY`` /
+  ``GEMINI_API_KEY``)
+* for the anthropic provider, the ``anthropic`` package is installed
 
-It never modifies files - it prints suggestions for the developer to apply
-by hand - and it always announces before sending code off the machine.
+It never modifies files - it prints suggestions for the developer - and it
+always announces before sending code off the machine. Secret-bearing files
+are filtered out before this module is reached (see ``scan.py``).
 """
 
-import os
-
+from git_security.config.loader import AIConfig
 from git_security.models.finding import Finding
+from git_security.suggestions.providers import PROVIDERS
 
 _PREFIX = "[git-security-tool]"
 
@@ -25,15 +27,9 @@ _SYSTEM = (
 )
 
 
-def suggestions_available() -> bool:
-    """True if an API key is present and the anthropic SDK is importable."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return False
-    try:
-        import anthropic  # noqa: F401
-    except ImportError:
-        return False
-    return True
+def suggestions_available(provider_name: str) -> bool:
+    provider = PROVIDERS.get(provider_name)
+    return provider is not None and provider.available()
 
 
 def build_prompt(finding: Finding, snippet: str) -> str:
@@ -45,29 +41,23 @@ def build_prompt(finding: Finding, snippet: str) -> str:
     )
 
 
-def explain(items: list[tuple[Finding, str]], model: str) -> None:
-    """Print an AI suggestion for each (finding, code snippet) pair."""
-    import anthropic
+def explain(items: list[tuple[Finding, str]], config: AIConfig) -> None:
+    """Print a suggestion for each (finding, code snippet) pair."""
+    provider = PROVIDERS[config.provider]
+    model = config.model or provider.default_model
 
     print(
-        f"{_PREFIX} sending {len(items)} finding(s) and code context to the "
-        f"Anthropic API ({model}) for remediation suggestions..."
+        f"{_PREFIX} sending {len(items)} finding(s) and code context to "
+        f"{provider.name} ({model}) for remediation suggestions..."
     )
-    client = anthropic.Anthropic()
 
     for finding, snippet in items:
         try:
-            response = client.messages.create(
-                model=model,
-                max_tokens=1024,
-                system=_SYSTEM,
-                messages=[{"role": "user", "content": build_prompt(finding, snippet)}],
-            )
-        except anthropic.AnthropicError as exc:
+            text = provider.complete(_SYSTEM, build_prompt(finding, snippet), model)
+        except RuntimeError as exc:
             print(f"{_PREFIX} suggestion failed for {finding.file}: {exc}")
             continue
 
-        text = "".join(b.text for b in response.content if b.type == "text")
         print(
             f"\n{_PREFIX} suggestion for {finding.file}:{finding.line} "
             f"({finding.tool}:{finding.rule}):"

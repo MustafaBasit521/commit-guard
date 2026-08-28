@@ -48,11 +48,11 @@ def _f(tool: str, file: str, sev: Severity = Severity.HIGH) -> Finding:
 def test_ai_suggestions_skip_gitleaks_and_secret_files(monkeypatch, capsys):
     sent: list = []
     monkeypatch.setattr(
-        "git_security.suggestions.llm.suggestions_available", lambda: True
+        "git_security.suggestions.llm.suggestions_available", lambda provider: True
     )
     monkeypatch.setattr(
         "git_security.suggestions.llm.explain",
-        lambda items, model: sent.extend(items),
+        lambda items, config: sent.extend(items),
     )
 
     secret = _f("gitleaks", "config.py", Severity.CRITICAL)

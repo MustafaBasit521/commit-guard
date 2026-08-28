@@ -59,14 +59,19 @@ paths = ["tests/fixtures/", "*.generated.py"]
 
 [ai]
 enabled = false                   # optional LLM remediation suggestions
-model = "claude-opus-5"
+provider = "gemini"               # "anthropic" | "gemini"
+model = ""                        # blank = provider default
 max_findings = 3
 ```
 
-**AI suggestions** are off by default. When enabled they also require
-`ANTHROPIC_API_KEY` and `pip install ".[ai]"`. They never modify files, they
-announce before sending code to the API, and secret-bearing files are never
-sent.
+**AI suggestions** are off by default and advisory only — they never affect
+the pass/block decision or modify files, they announce before sending code
+to the API, and secret-bearing files are never sent.
+
+| provider | key env var | extra install |
+|---|---|---|
+| `gemini` | `GEMINI_API_KEY` | none (stdlib HTTP) |
+| `anthropic` | `ANTHROPIC_API_KEY` | `pip install ".[ai]"` |
 
 ## Overrides
 

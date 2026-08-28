@@ -15,15 +15,29 @@ FINDING = Finding(
 )
 
 
-def test_unavailable_without_api_key(monkeypatch):
+def test_unknown_provider_is_unavailable():
+    assert suggestions_available("openai") is False
+
+
+def test_anthropic_unavailable_without_api_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    assert suggestions_available() is False
+    assert suggestions_available("anthropic") is False
 
 
-def test_unavailable_when_sdk_missing(monkeypatch):
+def test_anthropic_unavailable_when_sdk_missing(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.setitem(sys.modules, "anthropic", None)  # forces ImportError
-    assert suggestions_available() is False
+    assert suggestions_available("anthropic") is False
+
+
+def test_gemini_available_with_key(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    assert suggestions_available("gemini") is True
+
+
+def test_gemini_unavailable_without_key(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert suggestions_available("gemini") is False
 
 
 def test_build_prompt_includes_finding_and_code():

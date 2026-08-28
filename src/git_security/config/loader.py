@@ -19,8 +19,9 @@ Example ``.git-security-tool.toml`` at the repo root::
     paths = ["tests/fixtures/", "*.generated.py"]
 
     [ai]
-    enabled = true                 # off by default; also needs ANTHROPIC_API_KEY
-    model = "claude-opus-5"
+    enabled = true                 # off by default
+    provider = "gemini"            # "anthropic" | "gemini"
+    model = ""                     # blank = the provider's default model
     max_findings = 3
 """
 
@@ -34,6 +35,7 @@ from git_security.policy.engine import PolicyConfig
 CONFIG_FILENAME = ".git-security-tool.toml"
 
 _ALL_SCANNERS = ("ruff", "gitleaks", "semgrep")
+_AI_PROVIDERS = ("anthropic", "gemini")
 
 
 class ConfigError(Exception):
@@ -43,7 +45,8 @@ class ConfigError(Exception):
 @dataclass(frozen=True)
 class AIConfig:
     enabled: bool = False
-    model: str = "claude-opus-5"
+    provider: str = "anthropic"
+    model: str = ""  # blank = provider default
     max_findings: int = 3
 
 
@@ -105,8 +108,11 @@ def _load_ignore(section: dict) -> tuple[str, ...]:
 
 
 def _load_ai(section: dict) -> AIConfig:
-    model = section.get("model", "claude-opus-5")
+    provider = section.get("provider", "anthropic")
+    model = section.get("model", "")
     max_findings = section.get("max_findings", 3)
+    if provider not in _AI_PROVIDERS:
+        raise ConfigError(f"ai.provider must be one of {', '.join(_AI_PROVIDERS)}")
     if not isinstance(model, str):
         raise ConfigError("ai.model must be a string")
     if isinstance(max_findings, bool) or not isinstance(max_findings, int):
@@ -115,6 +121,7 @@ def _load_ai(section: dict) -> AIConfig:
         raise ConfigError("ai.max_findings must be >= 1")
     return AIConfig(
         enabled=section.get("enabled", False) is True,
+        provider=provider,
         model=model,
         max_findings=max_findings,
     )

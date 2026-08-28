@@ -18,7 +18,7 @@ dependencies = []
 # `pip install git-security-tool[scanners]` pulls the pip-installable ones.
 # gitleaks is a Go binary and is always installed separately.
 scanners = ["ruff", "semgrep"]
-ai = ["anthropic"]
+ai = ["anthropic"]  # only the anthropic AI provider needs this; gemini uses stdlib
 dev = ["pytest", "ruff"]
 
 [project.scripts]

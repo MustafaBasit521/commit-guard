@@ -82,10 +82,11 @@ def _run_ai_suggestions(
 ) -> None:
     from git_security.suggestions.llm import explain, suggestions_available
 
-    if not suggestions_available():
+    if not suggestions_available(ai.provider):
         print(
-            f"{_PREFIX} AI suggestions are enabled but unavailable - need "
-            "ANTHROPIC_API_KEY and: pip install 'git-security-tool[ai]'"
+            f"{_PREFIX} AI suggestions are enabled but the '{ai.provider}' "
+            "provider is unavailable - check its API key "
+            "(ANTHROPIC_API_KEY / GEMINI_API_KEY)"
         )
         return
 
@@ -103,7 +104,7 @@ def _run_ai_suggestions(
             "(secret-bearing code is never sent)"
         )
         return
-    explain([(f, _staged_snippet(f)) for f in targets], ai.model)
+    explain([(f, _staged_snippet(f)) for f in targets], ai)
 
 
 def _semgrep_rules_dir() -> Path:
