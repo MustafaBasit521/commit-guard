@@ -21,6 +21,7 @@ def _run_git(args: list[str]) -> str:
             ["git", *args],
             capture_output=True,
             text=True,
+            check=False,
         )
     except FileNotFoundError:
         raise RuntimeError("git executable not found on PATH")

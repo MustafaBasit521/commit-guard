@@ -30,6 +30,7 @@ def run_ruff(files: list[str]) -> list[dict]:
             ["ruff", "check", "--output-format=json", "--", *python_files],
             capture_output=True,
             text=True,
+            check=False,
         )
     except FileNotFoundError:
         print(
