@@ -20,6 +20,7 @@ from git_security.git.diff import (
     materialize_staged,
 )
 from git_security.git.repository import get_repo_root
+from git_security.ignore import filter_ignored, is_ignored
 from git_security.models.finding import Finding
 from git_security.policy.engine import evaluate
 from git_security.reporter.terminal import report
@@ -63,17 +64,24 @@ def run_scan() -> int:
         print(f"{_PREFIX} nothing staged - allowing commit")
         return 0
 
-    print(f"{_PREFIX} {len(staged_files)} file(s) staged:")
-    for path in staged_files:
+    repo_root = get_repo_root()
+    config = load_config(repo_root)
+
+    scannable = filter_ignored(staged_files, config.ignore_paths)
+    ignored = len(staged_files) - len(scannable)
+    suffix = f" ({ignored} ignored by config)" if ignored else ""
+    print(f"{_PREFIX} {len(scannable)} file(s) to scan{suffix}:")
+    for path in scannable:
         print(f"  - {path}")
+
+    if not scannable:
+        print(f"{_PREFIX} nothing to scan after ignores - allowing commit")
+        return 0
 
     diff = get_staged_diff()
     print(f"{_PREFIX} staged diff: {len(diff.splitlines())} lines")
 
-    repo_root = get_repo_root()
-    config = load_config(repo_root)
     rules_dir = _semgrep_rules_dir()
-
     enabled = config.enabled_scanners
     findings: list[Finding] = []
 
@@ -82,18 +90,23 @@ def run_scan() -> int:
     # may have changed since `git add`.
     with tempfile.TemporaryDirectory(prefix="git-security-tool-") as tmp:
         staged_root = Path(tmp)
-        materialize_staged(staged_files, staged_root)
+        materialize_staged(scannable, staged_root)
         _copy_project_config(repo_root, staged_root)
-        staged_paths = [str(staged_root / f) for f in staged_files]
+        staged_paths = [str(staged_root / f) for f in scannable]
 
         if "ruff" in enabled:
             findings += run_ruff(staged_paths, staged_root)
         if "semgrep" in enabled:
             findings += run_semgrep(staged_paths, staged_root, rules_dir)
 
-    # Gitleaks is already git-aware: it scans the staged index itself.
+    # Gitleaks is git-aware and scans the whole staged index, so filter its
+    # findings by the same ignore patterns after the fact.
     if "gitleaks" in enabled:
-        findings += run_gitleaks()
+        findings += [
+            f
+            for f in run_gitleaks()
+            if not is_ignored(f.file, config.ignore_paths)
+        ]
 
     decision = evaluate(findings, config.policy)
     report(decision)

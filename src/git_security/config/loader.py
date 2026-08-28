@@ -11,6 +11,9 @@ Example ``.git-security-tool.toml`` at the repo root::
 
     [scanners]
     gitleaks = false               # disable a scanner
+
+    [ignore]
+    paths = ["tests/fixtures/", "*.generated.py"]
 """
 
 import tomllib
@@ -29,6 +32,7 @@ _ALL_SCANNERS = ("ruff", "gitleaks", "semgrep")
 class Config:
     policy: PolicyConfig = field(default_factory=PolicyConfig)
     enabled_scanners: frozenset[str] = frozenset(_ALL_SCANNERS)
+    ignore_paths: tuple[str, ...] = ()
 
 
 def load_config(repo_root: Path) -> Config:
@@ -43,6 +47,7 @@ def load_config(repo_root: Path) -> Config:
     return Config(
         policy=_load_policy(raw.get("policy", {})),
         enabled_scanners=_load_scanners(raw.get("scanners", {})),
+        ignore_paths=_load_ignore(raw.get("ignore", {})),
     )
 
 
@@ -66,3 +71,10 @@ def _load_scanners(section: dict) -> frozenset[str]:
         if section.get(name) is False:
             enabled.discard(name)
     return frozenset(enabled)
+
+
+def _load_ignore(section: dict) -> tuple[str, ...]:
+    paths = section.get("paths", [])
+    if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+        raise ValueError("ignore.paths must be a list of strings")
+    return tuple(paths)

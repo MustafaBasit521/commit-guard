@@ -47,3 +47,19 @@ def test_scanner_set_to_true_stays_enabled(tmp_path):
     write_config(tmp_path, "[scanners]\nruff = true\n")
     config = load_config(tmp_path)
     assert "ruff" in config.enabled_scanners
+
+
+def test_ignore_paths_are_loaded(tmp_path):
+    write_config(tmp_path, '[ignore]\npaths = ["tests/fixtures/", "*.gen.py"]\n')
+    config = load_config(tmp_path)
+    assert config.ignore_paths == ("tests/fixtures/", "*.gen.py")
+
+
+def test_ignore_paths_default_empty(tmp_path):
+    assert load_config(tmp_path).ignore_paths == ()
+
+
+def test_ignore_paths_must_be_list_of_strings(tmp_path):
+    write_config(tmp_path, '[ignore]\npaths = "nope"\n')
+    with pytest.raises(ValueError, match="ignore.paths"):
+        load_config(tmp_path)
