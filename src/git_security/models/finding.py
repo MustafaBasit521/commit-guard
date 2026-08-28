@@ -25,9 +25,9 @@ class Severity(IntEnum):
 
 @dataclass(frozen=True)
 class Finding:
-    tool: str        # scanner that produced it: "ruff", "gitleaks", ...
-    rule: str        # tool-specific rule id: "F401", "aws-access-token", ...
+    tool: str  # scanner that produced it: "ruff", "gitleaks", ...
+    rule: str  # tool-specific rule id: "F401", "aws-access-token", ...
     severity: Severity
-    file: str        # repo-relative path
-    line: int        # 1-based line number; 0 when the tool reports none
-    message: str     # human-readable description
+    file: str  # repo-relative path
+    line: int  # 1-based line number; 0 when the tool reports none
+    message: str  # human-readable description

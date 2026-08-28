@@ -36,9 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "uninstall", help="remove the pre-commit hook from this repository"
     )
-    subparsers.add_parser(
-        "check", help="report pre-commit hook and scanner status"
-    )
+    subparsers.add_parser("check", help="report pre-commit hook and scanner status")
     subparsers.add_parser("version", help="print the version and exit")
     return parser
 

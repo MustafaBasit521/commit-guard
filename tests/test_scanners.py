@@ -9,6 +9,7 @@ from pathlib import Path
 from git_security.models.finding import Severity
 from git_security.scanners.base import to_repo_relative
 from git_security.scanners.gitleaks import _to_finding as gitleaks_to_finding
+from git_security.scanners.ruff import _parse_unformatted_path
 from git_security.scanners.ruff import _to_finding as ruff_to_finding
 from git_security.scanners.semgrep import _to_finding as semgrep_to_finding
 
@@ -16,6 +17,7 @@ REPO = Path("/repo")
 
 
 # --- to_repo_relative -------------------------------------------------------
+
 
 def test_absolute_path_becomes_relative():
     assert to_repo_relative("/repo/src/a.py", REPO) == "src/a.py"
@@ -30,6 +32,7 @@ def test_path_outside_repo_is_kept_as_is():
 
 
 # --- ruff -----------------------------------------------------------------
+
 
 def test_ruff_mapping():
     item = {
@@ -52,7 +55,21 @@ def test_ruff_mapping_tolerates_missing_fields():
     assert finding.line == 0
 
 
+def test_parse_unformatted_path_newer_ruff():
+    assert _parse_unformatted_path(" --> src/a.py:1:2") == "src/a.py"
+
+
+def test_parse_unformatted_path_older_ruff():
+    assert _parse_unformatted_path("Would reformat: src/b.py") == "src/b.py"
+
+
+def test_parse_unformatted_path_ignores_other_lines():
+    assert _parse_unformatted_path("1 file would be reformatted") is None
+    assert _parse_unformatted_path("") is None
+
+
 # --- gitleaks -----------------------------------------------------------------
+
 
 def test_gitleaks_mapping():
     item = {
@@ -70,6 +87,7 @@ def test_gitleaks_mapping():
 
 
 # --- semgrep -----------------------------------------------------------------
+
 
 def test_semgrep_error_maps_to_high():
     result = {

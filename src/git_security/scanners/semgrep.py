@@ -16,8 +16,7 @@ from git_security.models.finding import Finding, Severity
 from git_security.scanners.base import run_tool, to_repo_relative
 
 _NOT_FOUND_MSG = (
-    "[git-security-tool] semgrep not found on PATH - skipping "
-    "(pip install semgrep)"
+    "[git-security-tool] semgrep not found on PATH - skipping (pip install semgrep)"
 )
 
 # Semgrep severities -> our severity scale.
@@ -28,23 +27,19 @@ _SEVERITY_MAP = {
 }
 
 
-def run_semgrep(
-    files: list[str], repo_root: Path, rules_dir: Path
-) -> list[Finding]:
+def run_semgrep(files: list[str], repo_root: Path, rules_dir: Path) -> list[Finding]:
     """Scan *files* with the rules in *rules_dir* and return normalized findings."""
     if not files:
         return []
     if not rules_dir.exists():
-        print(
-            f"[git-security-tool] semgrep rules not found at {rules_dir} "
-            "- skipping"
-        )
+        print(f"[git-security-tool] semgrep rules not found at {rules_dir} - skipping")
         return []
 
     proc = run_tool(
         [
             "semgrep",
-            "--config", str(rules_dir),
+            "--config",
+            str(rules_dir),
             "--json",
             "--quiet",
             "--metrics=off",

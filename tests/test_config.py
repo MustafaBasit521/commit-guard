@@ -2,7 +2,7 @@
 
 import pytest
 
-from git_security.config.loader import CONFIG_FILENAME, load_config
+from git_security.config.loader import CONFIG_FILENAME, ConfigError, load_config
 from git_security.models.finding import Severity
 
 
@@ -24,7 +24,13 @@ def test_block_threshold_is_read_case_insensitively(tmp_path):
 
 def test_invalid_block_threshold_raises(tmp_path):
     write_config(tmp_path, '[policy]\nblock_threshold = "spicy"\n')
-    with pytest.raises(ValueError, match="block_threshold"):
+    with pytest.raises(ConfigError, match="block_threshold"):
+        load_config(tmp_path)
+
+
+def test_malformed_toml_raises_config_error(tmp_path):
+    write_config(tmp_path, "this is not = valid toml [[[")
+    with pytest.raises(ConfigError, match=CONFIG_FILENAME):
         load_config(tmp_path)
 
 
@@ -61,5 +67,29 @@ def test_ignore_paths_default_empty(tmp_path):
 
 def test_ignore_paths_must_be_list_of_strings(tmp_path):
     write_config(tmp_path, '[ignore]\npaths = "nope"\n')
-    with pytest.raises(ValueError, match="ignore.paths"):
+    with pytest.raises(ConfigError, match="ignore.paths"):
+        load_config(tmp_path)
+
+
+def test_ai_defaults_are_off(tmp_path):
+    ai = load_config(tmp_path).ai
+    assert ai.enabled is False
+    assert ai.model == "claude-opus-5"
+    assert ai.max_findings == 3
+
+
+def test_ai_config_is_read(tmp_path):
+    write_config(
+        tmp_path,
+        '[ai]\nenabled = true\nmodel = "claude-sonnet-5"\nmax_findings = 1\n',
+    )
+    ai = load_config(tmp_path).ai
+    assert ai.enabled is True
+    assert ai.model == "claude-sonnet-5"
+    assert ai.max_findings == 1
+
+
+def test_ai_max_findings_must_be_positive_int(tmp_path):
+    write_config(tmp_path, "[ai]\nmax_findings = 0\n")
+    with pytest.raises(ConfigError, match="ai.max_findings"):
         load_config(tmp_path)

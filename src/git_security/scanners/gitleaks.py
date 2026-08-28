@@ -25,11 +25,15 @@ def run_gitleaks() -> list[Finding]:
     """Scan the staged changes for secrets and return normalized findings."""
     proc = run_tool(
         [
-            "gitleaks", "protect", "--staged",
-            "--report-format", "json",
-            "--report-path", _STDOUT_PATH,
-            "--redact",      # never echo the actual secret value
-            "--no-banner",   # no ASCII-art logo on stderr
+            "gitleaks",
+            "protect",
+            "--staged",
+            "--report-format",
+            "json",
+            "--report-path",
+            _STDOUT_PATH,
+            "--redact",  # never echo the actual secret value
+            "--no-banner",  # no ASCII-art logo on stderr
         ]
     )
     if proc is None:
@@ -51,7 +55,7 @@ def _to_finding(item: dict) -> Finding:
         tool="gitleaks",
         rule=item.get("RuleID") or "",
         severity=Severity.CRITICAL,  # a staged secret always blocks
-        file=item.get("File") or "",   # Gitleaks paths are already repo-relative
+        file=item.get("File") or "",  # Gitleaks paths are already repo-relative
         line=item.get("StartLine") or 0,
         message=item.get("Description") or "",
     )

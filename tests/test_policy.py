@@ -48,9 +48,7 @@ def test_custom_threshold_lowered_to_medium():
         make_finding(Severity.MEDIUM),
         make_finding(Severity.HIGH),
     ]
-    decision = evaluate(
-        findings, PolicyConfig(block_threshold=Severity.MEDIUM)
-    )
+    decision = evaluate(findings, PolicyConfig(block_threshold=Severity.MEDIUM))
     assert len(decision.blocking) == 2  # MEDIUM + HIGH
     assert len(decision.warnings) == 1  # LOW
 

@@ -26,9 +26,7 @@ def run_ruff(files: list[str], repo_root: Path) -> list[Finding]:
     if not python_files:
         return []
 
-    proc = run_tool(
-        ["ruff", "check", "--output-format=json", "--", *python_files]
-    )
+    proc = run_tool(["ruff", "check", "--output-format=json", "--", *python_files])
     if proc is None:
         print(_NOT_FOUND_MSG)
         return []
@@ -53,3 +51,53 @@ def _to_finding(item: dict, repo_root: Path) -> Finding:
         line=location.get("row") or 0,
         message=item.get("message") or "",
     )
+
+
+def run_ruff_format(files: list[str], repo_root: Path) -> list[Finding]:
+    """Report Python files that are not formatted (``ruff format --check``)."""
+    python_files = [f for f in files if f.endswith(".py")]
+    if not python_files:
+        return []
+
+    proc = run_tool(["ruff", "format", "--check", "--", *python_files])
+    if proc is None:
+        return []  # run_ruff already printed the "not found" message
+
+    # 0 = all formatted, 1 = some would be reformatted, >1 = execution error.
+    if proc.returncode == 0:
+        return []
+    if proc.returncode not in (0, 1):
+        raise RuntimeError(f"ruff format failed: {proc.stderr.strip()}")
+
+    findings: list[Finding] = []
+    seen: set[str] = set()
+    for line in f"{proc.stdout}\n{proc.stderr}".splitlines():
+        path = _parse_unformatted_path(line)
+        if path and path not in seen:
+            seen.add(path)
+            findings.append(
+                Finding(
+                    tool="ruff",
+                    rule="format",
+                    severity=Severity.LOW,
+                    file=to_repo_relative(path, repo_root),
+                    line=0,
+                    message="file is not formatted (run `ruff format`)",
+                )
+            )
+    return findings
+
+
+def _parse_unformatted_path(line: str) -> str | None:
+    """Pull the file path out of a `ruff format --check` output line."""
+    line = line.strip()
+    if line.startswith("--> "):  # newer ruff: " --> path:line:col"
+        loc = line[4:]
+        head, _, tail = loc.rpartition(":")
+        base, _, mid = head.rpartition(":")
+        if tail.isdigit() and mid.isdigit() and base:
+            return base
+        return loc
+    if line.startswith("Would reformat: "):  # older ruff
+        return line[len("Would reformat: ") :]
+    return None

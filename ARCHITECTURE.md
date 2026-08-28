@@ -1,8 +1,13 @@
-# CommitGuard — System Architecture
+# git-security-tool — System Architecture
+
+> **Status:** this is the original design doc. The project has since been
+> built through milestone 15; where this document and the code disagree, the
+> code and `README.md` are authoritative. A full reconciliation pass is
+> pending.
 
 ## 1. Project Overview
 
-CommitGuard is a Linux-focused local Git security and code-quality tool.
+git-security-tool is a Linux-focused local Git security and code-quality tool.
 
 Its primary purpose is to intercept a developer's local Git commit before the commit is created, analyze the staged code changes, detect potential security vulnerabilities, secrets, and code-quality problems, and provide actionable suggestions.
 
@@ -20,7 +25,7 @@ Developer
 Git pre-commit hook
     │
     ▼
-CommitGuard
+git-security-tool
     │
     ├── Git Change Collector
     ├── Security Scanner
@@ -41,7 +46,7 @@ Git commit
 
 # 2. Project Goals
 
-The main goals of CommitGuard are:
+The main goals of git-security-tool are:
 
 1. Automatically inspect code before a local Git commit.
 2. Analyze only the changes relevant to the upcoming commit whenever possible.
@@ -80,7 +85,7 @@ The tool should be practical and educational rather than attempting to compete w
 
 # 4. High-Level Architecture
 
-CommitGuard consists of two major execution environments:
+git-security-tool consists of two major execution environments:
 
 ## Local Environment
 
@@ -105,7 +110,7 @@ git commit
 .git/hooks/pre-commit
     │
     ▼
-CommitGuard CLI
+git-security-tool CLI
     │
     ▼
 Git Change Collector
@@ -144,7 +149,7 @@ Staged Files    Staged Diff
 
 # 5. CI/CD Environment
 
-After the local workflow is implemented, CommitGuard will also operate inside CI.
+After the local workflow is implemented, git-security-tool will also operate inside CI.
 
 The purpose is to provide a second security layer because local Git hooks can be bypassed.
 
@@ -176,7 +181,7 @@ GitHub Actions
 CI Environment
     │
     ▼
-CommitGuard
+git-security-tool
     │
     ├── Security scan
     ├── Secret scan
@@ -202,7 +207,7 @@ Developer machine
     │
     ├── Git
     ├── Python
-    ├── CommitGuard
+    ├── git-security-tool
     ├── Semgrep
     ├── Gitleaks
     └── Ruff
@@ -217,7 +222,7 @@ GitHub Actions
 Docker Container
        │
        ├── Python
-       ├── CommitGuard
+       ├── git-security-tool
        ├── Semgrep
        ├── Gitleaks
        └── Ruff
@@ -249,7 +254,7 @@ GitHub Actions
     │
     ├── Run tests
     │
-    ├── Run CommitGuard
+    ├── Run git-security-tool
     │      │
     │      ├── Semgrep
     │      ├── Gitleaks
@@ -266,23 +271,23 @@ Deployment may be added later, but it is not required for the first version.
 
 # 8. CLI Architecture
 
-CommitGuard will expose a command-line interface.
+git-security-tool will expose a command-line interface.
 
 Example commands:
 
 ```bash
-commitguard install
-commitguard uninstall
-commitguard scan
-commitguard check
-commitguard init
-commitguard version
-commitguard --help
+git-security-tool install
+git_security uninstall
+git_security scan
+git_security check
+git_security init
+git_security version
+git_security --help
 ```
 
-### `commitguard install`
+### `git-security-tool install`
 
-Installs/configures CommitGuard for the current Git repository.
+Installs/configures git-security-tool for the current Git repository.
 
 Expected behavior:
 
@@ -290,22 +295,22 @@ Expected behavior:
 2. Locate the repository's Git directory.
 3. Check required dependencies.
 4. Install/configure the pre-commit hook.
-5. Create or validate CommitGuard configuration.
+5. Create or validate git-security-tool configuration.
 6. Display installation status.
 
-### `commitguard scan`
+### `git-security-tool scan`
 
 Runs the analysis manually without requiring a Git commit.
 
-### `commitguard uninstall`
+### `git-security-tool uninstall`
 
-Removes CommitGuard's Git integration from the repository.
+Removes git-security-tool's Git integration from the repository.
 
-### `commitguard check`
+### `git-security-tool check`
 
-Checks whether CommitGuard is correctly configured.
+Checks whether git-security-tool is correctly configured.
 
-### `commitguard init`
+### `git-security-tool init`
 
 May eventually initialize project configuration and optional CI configuration.
 
@@ -313,7 +318,7 @@ May eventually initialize project configuration and optional CI configuration.
 
 # 9. Git Integration
 
-CommitGuard uses Git Hooks rather than modifying Git itself.
+git-security-tool uses Git Hooks rather than modifying Git itself.
 
 The primary hook is:
 
@@ -333,7 +338,7 @@ Git invokes:
 .git/hooks/pre-commit
     │
     ▼
-commitguard scan
+git_security scan
     │
     ▼
 analysis
@@ -355,7 +360,7 @@ This mechanism is fundamental to the project.
 
 # 10. Accessing Committed Code
 
-CommitGuard does not wait for the commit to be created.
+git-security-tool does not wait for the commit to be created.
 
 Instead, it analyzes the code that is currently staged for the upcoming commit.
 
@@ -390,14 +395,14 @@ Python's `subprocess` module will initially be used to execute these commands.
 
 # 11. Scanner Architecture
 
-CommitGuard should not implement every security rule itself.
+git-security-tool should not implement every security rule itself.
 
 Instead, it acts as an orchestration layer around specialized tools.
 
 Planned scanners:
 
 ```text
-CommitGuard
+git-security-tool
     │
     ├── Semgrep
     │     └── Security/static analysis
@@ -412,7 +417,7 @@ CommitGuard
 Each scanner should have a wrapper inside:
 
 ```text
-src/commitguard/scanners/
+src/git_security/scanners/
 ```
 
 For example:
@@ -429,7 +434,7 @@ These modules are responsible for:
 * passing appropriate input
 * capturing output
 * handling errors
-* converting results into CommitGuard's internal finding format
+* converting results into git-security-tool's internal finding format
 
 ---
 
@@ -437,7 +442,7 @@ These modules are responsible for:
 
 Different scanners produce different output formats.
 
-CommitGuard should normalize those results into a common internal representation.
+git-security-tool should normalize those results into a common internal representation.
 
 Conceptually:
 
@@ -459,13 +464,13 @@ The important architectural principle is:
 
 > Scanner-specific output should not leak throughout the rest of the application.
 
-The analysis layer should work with CommitGuard's own normalized findings.
+The analysis layer should work with git-security-tool's own normalized findings.
 
 ---
 
 # 13. Severity System
 
-CommitGuard should eventually classify findings using levels such as:
+git-security-tool should eventually classify findings using levels such as:
 
 ```text
 CRITICAL
@@ -557,7 +562,7 @@ Example:
 
 ```text
 ╭─────────────────────────────────────╮
-│       CommitGuard Security Scan     │
+│       git-security-tool Security Scan     │
 ╰─────────────────────────────────────╯
 
 Files analyzed: 3
@@ -596,7 +601,7 @@ Terminal output is the initial priority.
 The planned structure is:
 
 ```text
-commitguard/
+git_security/
 │
 ├── .github/
 │   └── workflows/
@@ -604,7 +609,7 @@ commitguard/
 │       └── docker.yml
 │
 ├── src/
-│   └── commitguard/
+│   └── git_security/
 │       ├── __init__.py
 │       ├── cli.py
 │       │
@@ -657,7 +662,7 @@ commitguard/
 
 # 17. Python Packaging
 
-CommitGuard will be distributed as a Python package.
+git-security-tool will be distributed as a Python package.
 
 The package metadata will be defined in:
 
@@ -670,28 +675,28 @@ The package will eventually be published to PyPI.
 The intended user experience is:
 
 ```bash
-pip install commitguard
+pip install git-security-tool
 ```
 
 followed by:
 
 ```bash
 cd my-project
-commitguard install
+git-security-tool install
 ```
 
 The distinction is important:
 
 ```text
-pip install commitguard
+pip install git-security-tool
         │
         ▼
-Install CommitGuard CLI globally/environment-wide
+Install git-security-tool CLI globally/environment-wide
 
-commitguard install
+git-security-tool install
         │
         ▼
-Configure CommitGuard for the current Git repository
+Configure git-security-tool for the current Git repository
 ```
 
 ---
@@ -708,11 +713,11 @@ Gitleaks
 Ruff
 ```
 
-should be detected by CommitGuard.
+should be detected by git-security-tool.
 
 The installer should provide clear information about missing dependencies.
 
-CommitGuard should never silently install arbitrary system software without user awareness.
+git-security-tool should never silently install arbitrary system software without user awareness.
 
 ---
 
@@ -754,7 +759,7 @@ Responsibilities:
 
 * install dependencies
 * run tests
-* run CommitGuard
+* run git-security-tool
 * verify the project
 
 ### `docker.yml`
@@ -767,7 +772,7 @@ Responsibilities:
 
 # 21. Security Principles
 
-CommitGuard itself is a security-related tool, so its own implementation should follow secure development practices.
+git-security-tool itself is a security-related tool, so its own implementation should follow secure development practices.
 
 Important principles:
 
@@ -896,7 +901,7 @@ The final planned system is:
                     pre-commit hook
                              │
                              ▼
-                       CommitGuard
+                       git-security-tool
                              │
               ┌──────────────┼──────────────┐
               ▼              ▼              ▼
@@ -932,7 +937,7 @@ The final planned system is:
                      Docker
                        │
                        ▼
-                  CommitGuard
+                  git-security-tool
                        │
                 ┌──────┼──────┐
                 ▼      ▼      ▼

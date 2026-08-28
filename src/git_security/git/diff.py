@@ -25,6 +25,11 @@ def get_staged_diff() -> str:
     return run_git(["diff", "--cached"])
 
 
+def get_staged_file_content(path: str) -> str:
+    """Return the staged (index) content of a single file as text."""
+    return run_git(["show", f":{path}"])
+
+
 def materialize_staged(files: list[str], dest: Path) -> None:
     """Write the staged (index) content of *files* under *dest*.
 
