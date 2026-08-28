@@ -2,11 +2,12 @@
 
 Each scanner module owns the tool-specific knowledge: which command to run,
 how to read its exit codes, how to map its output to ``Finding``. What every
-scanner shares is "run an external process, and cope if it isn't installed" -
-that lives here.
+scanner shares - run an external process, cope if it isn't installed, and
+report paths consistently - lives here.
 """
 
 import subprocess
+from pathlib import Path
 
 
 def run_tool(cmd: list[str]) -> subprocess.CompletedProcess | None:
@@ -20,3 +21,14 @@ def run_tool(cmd: list[str]) -> subprocess.CompletedProcess | None:
         return subprocess.run(cmd, capture_output=True, text=True, check=False)
     except FileNotFoundError:
         return None
+
+
+def to_repo_relative(path: str, repo_root: Path) -> str:
+    """Make an absolute path repo-relative; leave anything else untouched."""
+    p = Path(path)
+    if not p.is_absolute():
+        return path
+    try:
+        return str(p.relative_to(repo_root))
+    except ValueError:
+        return path

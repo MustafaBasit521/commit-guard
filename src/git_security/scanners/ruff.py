@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 from git_security.models.finding import Finding
-from git_security.scanners.base import run_tool
+from git_security.scanners.base import run_tool, to_repo_relative
 
 _NOT_FOUND_MSG = (
     "[git-security-tool] ruff not found on PATH - skipping "
@@ -49,18 +49,7 @@ def _to_finding(item: dict, repo_root: Path) -> Finding:
         tool="ruff",
         rule=item.get("code") or "",
         severity="LOW",  # code quality; provisional until M7 policy
-        file=_relative(item.get("filename") or "", repo_root),
+        file=to_repo_relative(item.get("filename") or "", repo_root),
         line=location.get("row") or 0,
         message=item.get("message") or "",
     )
-
-
-def _relative(path: str, repo_root: Path) -> str:
-    """Make an absolute path repo-relative; leave anything else untouched."""
-    p = Path(path)
-    if not p.is_absolute():
-        return path
-    try:
-        return str(p.relative_to(repo_root))
-    except ValueError:
-        return path
