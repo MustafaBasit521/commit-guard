@@ -8,19 +8,42 @@ findings but never block.
 """
 
 import os
+import shutil
+import tempfile
 from importlib.resources import files
 from pathlib import Path
 
-from git_security.git.diff import get_staged_diff, get_staged_files
+from git_security.config.loader import load_config
+from git_security.git.diff import (
+    get_staged_diff,
+    get_staged_files,
+    materialize_staged,
+)
 from git_security.git.repository import get_repo_root
 from git_security.models.finding import Finding
-from git_security.policy.engine import PolicyConfig, evaluate
+from git_security.policy.engine import evaluate
 from git_security.reporter.terminal import report
 from git_security.scanners.gitleaks import run_gitleaks
 from git_security.scanners.ruff import run_ruff
 from git_security.scanners.semgrep import run_semgrep
 
 _PREFIX = "[git-security-tool]"
+
+# Config files a scanner may look for when deciding how to lint a project.
+_PROJECT_CONFIG_FILES = ("pyproject.toml", "ruff.toml", ".ruff.toml", "setup.cfg")
+
+
+def _copy_project_config(repo_root: Path, dest: Path) -> None:
+    """Place the repo's lint config at the root of the materialized tree.
+
+    Scanners resolve their configuration by walking up from each file. The
+    throwaway directory has none, so without this Ruff (etc.) would silently
+    use built-in defaults instead of the project's settings.
+    """
+    for name in _PROJECT_CONFIG_FILES:
+        src = repo_root / name
+        if src.is_file():
+            shutil.copy2(src, dest / name)
 
 
 def _semgrep_rules_dir() -> Path:
@@ -48,14 +71,31 @@ def run_scan() -> int:
     print(f"{_PREFIX} staged diff: {len(diff.splitlines())} lines")
 
     repo_root = get_repo_root()
+    config = load_config(repo_root)
     rules_dir = _semgrep_rules_dir()
 
+    enabled = config.enabled_scanners
     findings: list[Finding] = []
-    findings += run_ruff(staged_files, repo_root)
-    findings += run_gitleaks()
-    findings += run_semgrep(staged_files, repo_root, rules_dir)
 
-    decision = evaluate(findings, PolicyConfig())
+    # Ruff and Semgrep read files from disk, so we hand them the exact staged
+    # content copied into a throwaway directory - not the working tree, which
+    # may have changed since `git add`.
+    with tempfile.TemporaryDirectory(prefix="git-security-tool-") as tmp:
+        staged_root = Path(tmp)
+        materialize_staged(staged_files, staged_root)
+        _copy_project_config(repo_root, staged_root)
+        staged_paths = [str(staged_root / f) for f in staged_files]
+
+        if "ruff" in enabled:
+            findings += run_ruff(staged_paths, staged_root)
+        if "semgrep" in enabled:
+            findings += run_semgrep(staged_paths, staged_root, rules_dir)
+
+    # Gitleaks is already git-aware: it scans the staged index itself.
+    if "gitleaks" in enabled:
+        findings += run_gitleaks()
+
+    decision = evaluate(findings, config.policy)
     report(decision)
 
     if not decision.blocked:

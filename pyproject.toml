@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "git-security-tool"
 description = "Local Git security and code-quality gate that runs on pre-commit."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Muhammad Mustafa Basit" }]
 dynamic = ["version"]
 dependencies = []
@@ -32,3 +32,8 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 88
+
+[tool.ruff.lint.isort]
+# Make first-party detection explicit so import sorting is identical whether
+# ruff runs in the repo or in the throwaway tree the scanner materializes.
+known-first-party = ["git_security"]
