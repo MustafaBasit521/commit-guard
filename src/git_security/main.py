@@ -1,13 +1,13 @@
 """Entry point for the git-security-tool pre-commit scan.
 
-Milestone 2: use subprocess (via the git/ package) to capture what is
-actually staged for the commit and print a summary. Still no real checks -
-the exit code stays 0.
+Milestone 3: run a real analyzer (Ruff) over the staged Python files and
+print what it finds. Still no policy - the exit code stays 0.
 """
 
 import sys
 
 from git_security.git.diff import get_staged_diff, get_staged_files
+from git_security.scanners.ruff import run_ruff
 
 
 def main() -> int:
@@ -25,7 +25,19 @@ def main() -> int:
     diff = get_staged_diff()
     print(f"[git-security-tool] staged diff: {len(diff.splitlines())} lines")
 
-    print("[git-security-tool] no checks implemented yet - allowing commit")
+    findings = run_ruff(staged_files)
+    if findings:
+        print(f"[git-security-tool] ruff: {len(findings)} issue(s)")
+        for finding in findings:
+            location = finding.get("location") or {}
+            print(
+                f"  {finding.get('filename')}:{location.get('row')} "
+                f"{finding.get('code')} {finding.get('message')}"
+            )
+    else:
+        print("[git-security-tool] ruff: no issues")
+
+    print("[git-security-tool] policy not implemented yet - allowing commit")
     return 0
 
 
