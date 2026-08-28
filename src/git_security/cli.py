@@ -19,9 +19,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser(
+    scan_parser = subparsers.add_parser(
         "scan",
-        help="scan the staged changes; exit non-zero if policy blocks",
+        help="scan staged changes (or --all tracked files); non-zero if blocked",
+    )
+    scan_parser.add_argument(
+        "--all",
+        action="store_true",
+        dest="scan_all",
+        help="scan every tracked file in the working tree (for CI / audits)",
     )
 
     install_parser = subparsers.add_parser(
@@ -45,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     if args.command == "scan":
-        return run_scan()
+        return run_scan(scope="all" if args.scan_all else "staged")
     if args.command == "install":
         return install(force=args.force)
     if args.command == "uninstall":

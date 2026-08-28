@@ -118,3 +118,30 @@ def test_run_scan_ignores_configured_paths(git_repo, capsys):
     subprocess.run(["git", "add", "-A"], cwd=git_repo, check=True)
 
     assert run_scan() == 0
+
+
+def _commit(repo, name, content):
+    (repo / name).write_text(content)
+    subprocess.run(["git", "add", name], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", name], cwd=repo, check=True)
+
+
+def test_run_scan_all_passes_on_clean_repo(git_repo, capsys):
+    _commit(git_repo, "ok.py", "x = 1\n")
+
+    assert run_scan(scope="all") == 0
+    assert "full security scan" in capsys.readouterr().out
+
+
+def test_run_scan_all_fails_on_committed_eval(git_repo, capsys):
+    _commit(git_repo, "bad.py", "eval(input())\n")
+
+    assert run_scan(scope="all") == 1
+    out = capsys.readouterr().out
+    assert "python-dangerous-eval" in out
+    assert "scan failed" in out
+
+
+def test_run_scan_all_with_nothing_tracked(git_repo, capsys):
+    assert run_scan(scope="all") == 0
+    assert "no tracked files" in capsys.readouterr().out

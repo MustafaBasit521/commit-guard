@@ -30,6 +30,11 @@ def get_staged_file_content(path: str) -> str:
     return run_git(["show", f":{path}"])
 
 
+def get_tracked_files() -> list[str]:
+    """Every file tracked by Git in this repository (for a full-repo scan)."""
+    return [line for line in run_git(["ls-files"]).splitlines() if line]
+
+
 def materialize_staged(files: list[str], dest: Path) -> None:
     """Write the staged (index) content of *files* under *dest*.
 

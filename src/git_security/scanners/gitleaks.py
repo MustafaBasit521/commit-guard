@@ -21,13 +21,20 @@ _NOT_FOUND_MSG = (
 _STDOUT_PATH = "/dev/stdout"
 
 
-def run_gitleaks() -> list[Finding]:
-    """Scan the staged changes for secrets and return normalized findings."""
+def run_gitleaks(staged: bool = True) -> list[Finding]:
+    """Scan for secrets and return normalized findings.
+
+    ``staged=True`` scans the staged index (pre-commit); ``staged=False``
+    scans the working-tree files (full-repo / CI).
+    """
+    if staged:
+        mode = ["protect", "--staged"]
+    else:
+        mode = ["detect", "--no-git", "--source", "."]
     proc = run_tool(
         [
             "gitleaks",
-            "protect",
-            "--staged",
+            *mode,
             "--report-format",
             "json",
             "--report-path",
