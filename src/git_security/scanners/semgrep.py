@@ -72,9 +72,13 @@ def run_semgrep(
 def _to_finding(result: dict, repo_root: Path) -> Finding:
     extra = result.get("extra") or {}
     start = result.get("start") or {}
+    # Semgrep prefixes check_id with the rule file's path
+    # (e.g. "src.git_security.rules.semgrep.python-dangerous-eval").
+    # Keep only the rule's own id.
+    check_id = result.get("check_id") or ""
     return Finding(
         tool="semgrep",
-        rule=result.get("check_id") or "",
+        rule=check_id.rsplit(".", 1)[-1],
         severity=_SEVERITY_MAP.get(extra.get("severity", ""), Severity.MEDIUM),
         file=to_repo_relative(result.get("path") or "", repo_root),
         line=start.get("line") or 0,

@@ -73,13 +73,14 @@ def test_gitleaks_mapping():
 
 def test_semgrep_error_maps_to_high():
     result = {
-        "check_id": "rules.semgrep.python-dangerous-eval",
+        "check_id": "src.git_security.rules.semgrep.python-dangerous-eval",
         "path": "/repo/x.py",
         "start": {"line": 4},
         "extra": {"message": "  eval is bad\n", "severity": "ERROR"},
     }
     finding = semgrep_to_finding(result, REPO)
     assert finding.tool == "semgrep"
+    assert finding.rule == "python-dangerous-eval"
     assert finding.severity is Severity.HIGH
     assert finding.file == "x.py"
     assert finding.line == 4

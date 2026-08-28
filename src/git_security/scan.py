@@ -1,14 +1,15 @@
-"""Entry point for the git-security-tool pre-commit scan.
+"""The pre-commit scan pipeline.
 
-Milestone 8: presentation moved to reporter/terminal.py. main() now only
-orchestrates - gather findings, evaluate policy, report, pick an exit code.
+Gather the staged changes, run every scanner, evaluate policy, report, and
+return an exit code. Invoked by ``git-security-tool scan`` (see cli.py).
 
 Escape hatch while developing: set GIT_SECURITY_NO_BLOCK=1 to report
 findings but never block.
 """
 
 import os
-import sys
+from importlib.resources import files
+from pathlib import Path
 
 from git_security.git.diff import get_staged_diff, get_staged_files
 from git_security.git.repository import get_repo_root
@@ -22,7 +23,16 @@ from git_security.scanners.semgrep import run_semgrep
 _PREFIX = "[git-security-tool]"
 
 
-def main() -> int:
+def _semgrep_rules_dir() -> Path:
+    """Directory of bundled Semgrep rules.
+
+    The rules ship inside the package. For a normal (non-zipped) install this
+    resolves to a real directory on disk, which is all run_semgrep needs.
+    """
+    return Path(str(files("git_security") / "rules" / "semgrep"))
+
+
+def run_scan() -> int:
     print(f"{_PREFIX} pre-commit security scan")
 
     staged_files = get_staged_files()
@@ -38,7 +48,7 @@ def main() -> int:
     print(f"{_PREFIX} staged diff: {len(diff.splitlines())} lines")
 
     repo_root = get_repo_root()
-    rules_dir = repo_root / "rules" / "semgrep"
+    rules_dir = _semgrep_rules_dir()
 
     findings: list[Finding] = []
     findings += run_ruff(staged_files, repo_root)
@@ -64,7 +74,3 @@ def main() -> int:
         "or set GIT_SECURITY_NO_BLOCK=1 to override"
     )
     return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
