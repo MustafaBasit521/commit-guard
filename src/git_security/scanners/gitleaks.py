@@ -1,57 +1,57 @@
-"""Wrapper around Gitleaks (secret / credential detection).
+"""Gitleaks wrapper: staged changes -> list[Finding].
 
-Unlike Ruff, Gitleaks is Git-aware: instead of taking a list of files, it
-scans the *staged* changes directly (``gitleaks protect --staged``). So this
-wrapper takes no arguments - it asks Gitleaks what secrets are in whatever is
-currently staged for commit.
-
-Like the Ruff wrapper, this module knows nothing about policy or reporting.
-It only knows how to talk to Gitleaks and hand back raw findings.
+Unlike Ruff, Gitleaks is Git-aware: it scans the *staged* changes directly
+(``gitleaks protect --staged``), so this wrapper takes no file list. It maps
+Gitleaks' JSON to the normalized ``Finding`` model and nothing else.
 """
 
 import json
-import subprocess
 
-# Gitleaks writes its JSON report to a path we choose. On Linux, "/dev/stdout"
-# lets us read it straight from the pipe without a temp file. This tool is
-# Linux-only by design, so that is fine.
+from git_security.models.finding import Finding
+from git_security.scanners.base import run_tool
+
+_NOT_FOUND_MSG = (
+    "[git-security-tool] gitleaks not found on PATH - skipping "
+    "(https://github.com/gitleaks/gitleaks#installing)"
+)
+
+# Gitleaks writes its JSON report to a path we pick. On Linux, "/dev/stdout"
+# is the process's own stdout, so we read the report straight off the pipe
+# with no temp file. This tool is Linux-only by design.
 _STDOUT_PATH = "/dev/stdout"
 
 
-def run_gitleaks() -> list[dict]:
-    """Scan the staged changes for secrets.
-
-    Returns Gitleaks' findings as a list of raw dicts (no normalization yet).
-    Returns an empty list if Gitleaks is not installed.
-    Raises RuntimeError if Gitleaks runs but errors out.
-    """
-    try:
-        result = subprocess.run(
-            [
-                "gitleaks",
-                "protect",
-                "--staged",
-                "--report-format", "json",
-                "--report-path", _STDOUT_PATH,
-                "--redact",      # never echo the actual secret value
-                "--no-banner",   # no ASCII-art logo on stderr
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except FileNotFoundError:
-        print(
-            "[git-security-tool] gitleaks not found on PATH - skipping "
-            "(https://github.com/gitleaks/gitleaks#installing)"
-        )
+def run_gitleaks() -> list[Finding]:
+    """Scan the staged changes for secrets and return normalized findings."""
+    proc = run_tool(
+        [
+            "gitleaks", "protect", "--staged",
+            "--report-format", "json",
+            "--report-path", _STDOUT_PATH,
+            "--redact",      # never echo the actual secret value
+            "--no-banner",   # no ASCII-art logo on stderr
+        ]
+    )
+    if proc is None:
+        print(_NOT_FOUND_MSG)
         return []
 
-    # Gitleaks exit codes: 0 = no leaks, 1 = leaks found, anything else = error.
-    if result.returncode not in (0, 1):
-        raise RuntimeError(f"gitleaks failed: {result.stderr.strip()}")
+    # Gitleaks exit codes: 0 = no leaks, 1 = leaks found, other = error.
+    if proc.returncode not in (0, 1):
+        raise RuntimeError(f"gitleaks failed: {proc.stderr.strip()}")
 
-    if not result.stdout.strip():
+    if not proc.stdout.strip():
         return []
 
-    return json.loads(result.stdout)
+    return [_to_finding(item) for item in json.loads(proc.stdout)]
+
+
+def _to_finding(item: dict) -> Finding:
+    return Finding(
+        tool="gitleaks",
+        rule=item.get("RuleID") or "",
+        severity="HIGH",  # a staged secret is serious; provisional until M7
+        file=item.get("File") or "",   # Gitleaks paths are already repo-relative
+        line=item.get("StartLine") or 0,
+        message=item.get("Description") or "",
+    )
