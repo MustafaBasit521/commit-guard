@@ -7,7 +7,7 @@ Gitleaks' JSON to the normalized ``Finding`` model and nothing else.
 
 import json
 
-from git_security.models.finding import Finding
+from git_security.models.finding import Finding, Severity
 from git_security.scanners.base import run_tool
 
 _NOT_FOUND_MSG = (
@@ -50,7 +50,7 @@ def _to_finding(item: dict) -> Finding:
     return Finding(
         tool="gitleaks",
         rule=item.get("RuleID") or "",
-        severity="HIGH",  # a staged secret is serious; provisional until M7
+        severity=Severity.CRITICAL,  # a staged secret always blocks
         file=item.get("File") or "",   # Gitleaks paths are already repo-relative
         line=item.get("StartLine") or 0,
         message=item.get("Description") or "",

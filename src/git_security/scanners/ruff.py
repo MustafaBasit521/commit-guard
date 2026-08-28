@@ -11,7 +11,7 @@ the newer version. Precise staged-content scanning is a later milestone.
 import json
 from pathlib import Path
 
-from git_security.models.finding import Finding
+from git_security.models.finding import Finding, Severity
 from git_security.scanners.base import run_tool, to_repo_relative
 
 _NOT_FOUND_MSG = (
@@ -48,7 +48,7 @@ def _to_finding(item: dict, repo_root: Path) -> Finding:
     return Finding(
         tool="ruff",
         rule=item.get("code") or "",
-        severity="LOW",  # code quality; provisional until M7 policy
+        severity=Severity.LOW,  # code quality never blocks by default
         file=to_repo_relative(item.get("filename") or "", repo_root),
         line=location.get("row") or 0,
         message=item.get("message") or "",

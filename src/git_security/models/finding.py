@@ -6,13 +6,28 @@ with ``Finding`` - never a raw tool dict.
 """
 
 from dataclasses import dataclass
+from enum import IntEnum
+
+
+class Severity(IntEnum):
+    """Ordered severity levels.
+
+    Subclassing ``IntEnum`` means the members compare like numbers, so policy
+    can ask ``finding.severity >= Severity.HIGH`` directly. Higher = worse.
+    """
+
+    INFO = 1
+    LOW = 2
+    MEDIUM = 3
+    HIGH = 4
+    CRITICAL = 5
 
 
 @dataclass(frozen=True)
 class Finding:
-    tool: str       # scanner that produced it: "ruff", "gitleaks", ...
-    rule: str       # tool-specific rule id: "F401", "aws-access-token", ...
-    severity: str   # CRITICAL | HIGH | MEDIUM | LOW | INFO (provisional until M7)
-    file: str       # repo-relative path
-    line: int       # 1-based line number; 0 when the tool reports none
-    message: str    # human-readable description
+    tool: str        # scanner that produced it: "ruff", "gitleaks", ...
+    rule: str        # tool-specific rule id: "F401", "aws-access-token", ...
+    severity: Severity
+    file: str        # repo-relative path
+    line: int        # 1-based line number; 0 when the tool reports none
+    message: str     # human-readable description

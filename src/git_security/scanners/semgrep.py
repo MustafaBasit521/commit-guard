@@ -12,7 +12,7 @@ added as an opt-in config option later.
 import json
 from pathlib import Path
 
-from git_security.models.finding import Finding
+from git_security.models.finding import Finding, Severity
 from git_security.scanners.base import run_tool, to_repo_relative
 
 _NOT_FOUND_MSG = (
@@ -20,8 +20,12 @@ _NOT_FOUND_MSG = (
     "(pip install semgrep)"
 )
 
-# Semgrep severities -> our provisional severities (revisited in M7).
-_SEVERITY_MAP = {"ERROR": "HIGH", "WARNING": "MEDIUM", "INFO": "LOW"}
+# Semgrep severities -> our severity scale.
+_SEVERITY_MAP = {
+    "ERROR": Severity.HIGH,
+    "WARNING": Severity.MEDIUM,
+    "INFO": Severity.LOW,
+}
 
 
 def run_semgrep(
@@ -71,7 +75,7 @@ def _to_finding(result: dict, repo_root: Path) -> Finding:
     return Finding(
         tool="semgrep",
         rule=result.get("check_id") or "",
-        severity=_SEVERITY_MAP.get(extra.get("severity", ""), "MEDIUM"),
+        severity=_SEVERITY_MAP.get(extra.get("severity", ""), Severity.MEDIUM),
         file=to_repo_relative(result.get("path") or "", repo_root),
         line=start.get("line") or 0,
         message=(extra.get("message") or "").strip(),
