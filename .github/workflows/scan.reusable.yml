@@ -4,18 +4,19 @@ name: git-security-tool scan
 #
 #   jobs:
 #     security:
-#       uses: MustafaBasit521/commit-guard/.github/workflows/scan.reusable.yml@main
+#       uses: MustafaBasit521/commit-guard/.github/workflows/scan.reusable.yml@v0.1.0
 #
-# Pin @v0.1.0 (or a commit SHA) instead of @main once the tool is tagged, so a
-# change to the tool can't unexpectedly break a downstream project's CI.
+# Pin the caller to a tag (@v0.1.0), not @main, so a change to this workflow
+# can't unexpectedly break a downstream project's CI. Bump `version` here when
+# a new git-security-tool release is out.
 
 on:
   workflow_call:
     inputs:
-      ref:
-        description: "git-security-tool version, branch, or SHA to install"
+      version:
+        description: "git-security-tool version to install from PyPI"
         type: string
-        default: main
+        default: "0.1.0"
       python-version:
         type: string
         default: "3.12"
@@ -31,9 +32,7 @@ jobs:
           python-version: ${{ inputs.python-version }}
 
       - name: Install git-security-tool
-        run: >
-          pip install "git-security-tool[scanners] @
-          git+https://github.com/MustafaBasit521/commit-guard.git@${{ inputs.ref }}"
+        run: pip install "git-security-tool[scanners]==${{ inputs.version }}"
 
       - name: Install gitleaks
         run: |
