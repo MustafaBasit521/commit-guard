@@ -1,0 +1,38 @@
+# Deserialization of untrusted data -> arbitrary object construction / RCE.
+rules:
+  - id: python-pickle-load
+    languages: [python]
+    severity: ERROR
+    message: >
+      pickle can execute arbitrary code while deserializing. Never unpickle
+      data you do not fully trust; use JSON or a schema-validated format.
+    pattern-either:
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+      - pattern: cPickle.load(...)
+      - pattern: cPickle.loads(...)
+
+  - id: python-yaml-unsafe-load
+    languages: [python]
+    severity: ERROR
+    message: >
+      yaml.load() without a safe loader can construct arbitrary Python objects
+      from the input. Use yaml.safe_load(...) or pass Loader=yaml.SafeLoader.
+    patterns:
+      - pattern: yaml.load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader)
+      - pattern-not: yaml.load(..., Loader=yaml.CSafeLoader)
+
+  - id: python-insecure-xml-parser
+    languages: [python]
+    severity: WARNING
+    message: >
+      Parsing XML with the standard library is exposed to entity-expansion
+      ("billion laughs") and, with some parsers, external-entity attacks. Use
+      the defusedxml package for untrusted input.
+    pattern-either:
+      - pattern: xml.etree.ElementTree.parse(...)
+      - pattern: xml.etree.ElementTree.fromstring(...)
+      - pattern: xml.dom.minidom.parse(...)
+      - pattern: xml.dom.minidom.parseString(...)
+      - pattern: xml.sax.parse(...)

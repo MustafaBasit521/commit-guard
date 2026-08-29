@@ -1,0 +1,38 @@
+# Filesystem and network hygiene.
+rules:
+  - id: python-archive-extractall
+    languages: [python]
+    severity: ERROR
+    message: >
+      extractall()/extract() on an untrusted archive can write files outside
+      the target directory (path traversal - Zip Slip, CVE-2007-4559).
+      Validate each member's path before extracting.
+    pattern-either:
+      - pattern: $ARCHIVE.extractall(...)
+      - pattern: $ARCHIVE.extract(...)
+
+  - id: python-tempfile-mktemp
+    languages: [python]
+    severity: WARNING
+    message: >
+      tempfile.mktemp() only returns a name - there is a race between that and
+      creating the file. Use tempfile.mkstemp() or NamedTemporaryFile().
+    pattern: tempfile.mktemp(...)
+
+  - id: python-requests-no-timeout
+    languages: [python]
+    severity: WARNING
+    message: >
+      A requests call with no timeout can hang forever, which is a
+      denial-of-service risk. Pass timeout=<seconds>.
+    patterns:
+      - pattern-either:
+          - pattern: requests.get(...)
+          - pattern: requests.post(...)
+          - pattern: requests.put(...)
+          - pattern: requests.patch(...)
+          - pattern: requests.delete(...)
+          - pattern: requests.head(...)
+          - pattern: requests.options(...)
+          - pattern: requests.request(...)
+      - pattern-not: requests.$M(..., timeout=$T)

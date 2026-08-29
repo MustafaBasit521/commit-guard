@@ -1,10 +1,4 @@
-# Starter security rules for git-security-tool.
-# These are deliberately small and readable - the point is to understand how
-# a Semgrep rule turns source code into a finding, not to be comprehensive.
-#
-# A rule matches when its `pattern` (an AST shape, not a regex) is found in
-# code of the given `languages`. `...` is Semgrep's "anything here" ellipsis.
-
+# Command / code injection: input reaching an interpreter or a shell.
 rules:
   - id: python-dangerous-eval
     languages: [python]
@@ -22,6 +16,22 @@ rules:
       exec() runs arbitrary code. Avoid it; use explicit logic or a narrow
       dispatch table.
     pattern: exec(...)
+
+  - id: python-os-system
+    languages: [python]
+    severity: ERROR
+    message: >
+      os.system() runs its argument through the shell - command injection if
+      any part is dynamic. Use subprocess.run([...]) with an argument list.
+    pattern: os.system(...)
+
+  - id: python-os-popen
+    languages: [python]
+    severity: ERROR
+    message: >
+      os.popen() runs its argument through the shell. Use subprocess with an
+      argument list instead.
+    pattern: os.popen(...)
 
   - id: python-subprocess-shell-true
     languages: [python]

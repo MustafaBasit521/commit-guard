@@ -98,6 +98,14 @@ def test_run_scan_blocks_on_eval(git_repo, capsys):
     assert "python-dangerous-eval" in capsys.readouterr().out
 
 
+def test_run_scan_blocks_on_yaml_load(git_repo, capsys):
+    (git_repo / "cfg.py").write_text("import yaml\nyaml.load(open('c').read())\n")
+    subprocess.run(["git", "add", "cfg.py"], cwd=git_repo, check=True)
+
+    assert run_scan() == 1
+    assert "python-yaml-unsafe-load" in capsys.readouterr().out
+
+
 def test_run_scan_reports_config_error_cleanly(git_repo, capsys):
     (git_repo / "ok.py").write_text("x = 1\n")
     (git_repo / ".git-security-tool.toml").write_text(

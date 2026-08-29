@@ -38,9 +38,15 @@ Commands: `scan`, `install [--force]`, `uninstall`, `check`, `version`.
 | category | tool | severity | blocks by default |
 |---|---|---|---|
 | Secrets / credentials | Gitleaks (staged diff) | CRITICAL | yes |
-| Dangerous code (`eval`, `exec`, `shell=True`) | Semgrep + bundled rules | HIGH / MEDIUM | `eval`/`exec` yes |
+| Insecure code patterns (17 rules) | Semgrep + bundled rules | HIGH / MEDIUM | HIGH yes |
 | Lint (unused imports, undefined names, …) | `ruff check` | LOW | no |
 | Formatting | `ruff format --check` | LOW | no |
+
+The bundled Semgrep rules (`src/git_security/rules/semgrep/`) cover code/command
+injection (`eval`, `exec`, `os.system`, `shell=True`), unsafe deserialization
+(`pickle`, `yaml.load`, insecure XML), weak crypto & disabled TLS verification,
+web footguns (Flask `debug=True`, Jinja autoescape off, `mark_safe`), and
+filesystem/network hygiene (`extractall`, `mktemp`, `requests` without timeout).
 
 Semgrep/Ruff analysis is **Python only**; Gitleaks is language-agnostic.
 Scanners see the exact **staged** content, not your working tree.
@@ -89,8 +95,9 @@ ruff check src tests && ruff format --check src tests
 ## Scope / non-goals
 
 No dependency-CVE scanning, no license checks, no SBOM, no IaC/container
-scanning, no non-Python static analysis. The bundled Semgrep ruleset is a
-small starter set — not a replacement for a full SAST platform.
+scanning, no non-Python static analysis. The bundled Semgrep ruleset is
+curated and intentionally small — not a replacement for a full SAST platform
+or the Semgrep registry.
 
 ## License
 

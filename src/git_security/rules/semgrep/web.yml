@@ -1,0 +1,32 @@
+# Web-framework footguns: debug servers and disabled output escaping.
+rules:
+  - id: python-flask-debug-true
+    languages: [python]
+    severity: ERROR
+    message: >
+      Running a web app with debug=True exposes the Werkzeug interactive
+      debugger, which allows remote code execution. Never enable it outside
+      local development.
+    pattern: $APP.run(..., debug=True, ...)
+
+  - id: python-jinja-autoescape-disabled
+    languages: [python]
+    severity: WARNING
+    message: >
+      A Jinja2 Environment without autoescaping does not HTML-escape template
+      output, risking XSS. Pass autoescape=True or
+      autoescape=select_autoescape(...).
+    patterns:
+      - pattern: jinja2.Environment(...)
+      - pattern-not: jinja2.Environment(..., autoescape=True)
+      - pattern-not: jinja2.Environment(..., autoescape=select_autoescape(...))
+
+  - id: python-django-mark-safe
+    languages: [python]
+    severity: WARNING
+    message: >
+      mark_safe() turns off Django's HTML autoescaping for this value. If any
+      part of it is user-controlled, this is an XSS sink.
+    pattern-either:
+      - pattern: mark_safe(...)
+      - pattern: django.utils.safestring.mark_safe(...)

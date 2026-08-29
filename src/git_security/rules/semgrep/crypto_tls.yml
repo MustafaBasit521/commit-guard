@@ -1,0 +1,37 @@
+# Weak cryptography and disabled transport security.
+rules:
+  - id: python-weak-hash
+    languages: [python]
+    severity: WARNING
+    message: >
+      MD5 and SHA-1 are broken for security use (practical collisions). Use
+      SHA-256 or stronger. For a non-security checksum, pass
+      usedforsecurity=False to make the intent explicit.
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5(...)
+          - pattern: hashlib.sha1(...)
+      - pattern-not: hashlib.md5(..., usedforsecurity=False)
+      - pattern-not: hashlib.sha1(..., usedforsecurity=False)
+
+  - id: python-tls-verification-disabled
+    languages: [python]
+    severity: ERROR
+    message: >
+      TLS certificate verification is disabled (verify=False), which exposes
+      the connection to man-in-the-middle attacks. Remove it, or pin a CA
+      bundle with verify="/path/to/ca.pem".
+    pattern-either:
+      - pattern: requests.$M(..., verify=False, ...)
+      - pattern: httpx.$M(..., verify=False, ...)
+      - pattern: httpx.Client(..., verify=False, ...)
+
+  - id: python-ssl-unverified-context
+    languages: [python]
+    severity: ERROR
+    message: >
+      ssl._create_unverified_context() / _create_stdlib_context disables
+      certificate validation for every connection that uses it.
+    pattern-either:
+      - pattern: ssl._create_unverified_context(...)
+      - pattern: ssl._create_stdlib_context(...)
