@@ -1,5 +1,7 @@
 # git-security-tool
 
+[![CI](https://github.com/MustafaBasit521/commit-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/MustafaBasit521/commit-guard/actions/workflows/ci.yml)
+
 A local Git **pre-commit gate** for Linux. It scans your *staged* changes and
 blocks the commit when it finds something serious — secrets, dangerous code
 patterns — while surfacing quality and formatting issues as warnings.
@@ -23,9 +25,15 @@ git commit
 ## Install
 
 ```bash
-pip install -e ".[scanners]"     # the tool + ruff + semgrep
+pip install "git-security-tool[scanners]"     # tool + ruff + semgrep
 cd your-repo
-git-security-tool install         # writes .git/hooks/pre-commit
+git-security-tool install                     # writes .git/hooks/pre-commit
+```
+
+Latest unreleased version, straight from the repo:
+
+```bash
+pip install "git-security-tool[scanners] @ git+https://github.com/MustafaBasit521/commit-guard.git"
 ```
 
 Gitleaks is a Go binary — install it separately if you want secret detection
