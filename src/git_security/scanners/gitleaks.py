@@ -1,8 +1,11 @@
-"""Gitleaks wrapper: staged changes -> list[Finding].
+"""Gitleaks wrapper: staged changes (or the whole tree) -> list[Finding].
 
-Unlike Ruff, Gitleaks is Git-aware: it scans the *staged* changes directly
-(``gitleaks protect --staged``), so this wrapper takes no file list. It maps
-Gitleaks' JSON to the normalized ``Finding`` model and nothing else.
+Gitleaks is Git-aware, so this wrapper takes no file list:
+
+* ``staged=True``  -> ``gitleaks git --staged`` (the staged diff, pre-commit)
+* ``staged=False`` -> ``gitleaks dir .``        (every file on disk, CI / audit)
+
+It maps Gitleaks' JSON to the normalized ``Finding`` model and nothing else.
 """
 
 import json
@@ -15,22 +18,10 @@ _NOT_FOUND_MSG = (
     "(https://github.com/gitleaks/gitleaks#installing)"
 )
 
-# Gitleaks writes its JSON report to a path we pick. On Linux, "/dev/stdout"
-# is the process's own stdout, so we read the report straight off the pipe
-# with no temp file. This tool is Linux-only by design.
-_STDOUT_PATH = "/dev/stdout"
-
 
 def run_gitleaks(staged: bool = True) -> list[Finding]:
-    """Scan for secrets and return normalized findings.
-
-    ``staged=True`` scans the staged index (pre-commit); ``staged=False``
-    scans the working-tree files (full-repo / CI).
-    """
-    if staged:
-        mode = ["protect", "--staged"]
-    else:
-        mode = ["detect", "--no-git", "--source", "."]
+    """Scan for secrets and return normalized findings."""
+    mode = ["git", "--staged"] if staged else ["dir", "."]
     proc = run_tool(
         [
             "gitleaks",
@@ -38,9 +29,9 @@ def run_gitleaks(staged: bool = True) -> list[Finding]:
             "--report-format",
             "json",
             "--report-path",
-            _STDOUT_PATH,
+            "-",  # write the JSON report to stdout
             "--redact",  # never echo the actual secret value
-            "--no-banner",  # no ASCII-art logo on stderr
+            "--no-banner",
         ]
     )
     if proc is None:
@@ -61,7 +52,7 @@ def _to_finding(item: dict) -> Finding:
     return Finding(
         tool="gitleaks",
         rule=item.get("RuleID") or "",
-        severity=Severity.CRITICAL,  # a staged secret always blocks
+        severity=Severity.CRITICAL,  # a committed secret always blocks
         file=item.get("File") or "",  # Gitleaks paths are already repo-relative
         line=item.get("StartLine") or 0,
         message=item.get("Description") or "",

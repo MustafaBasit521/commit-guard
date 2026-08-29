@@ -153,3 +153,32 @@ def test_run_scan_all_fails_on_committed_eval(git_repo, capsys):
 def test_run_scan_all_with_nothing_tracked(git_repo, capsys):
     assert run_scan(scope="all") == 0
     assert "no tracked files" in capsys.readouterr().out
+
+
+def test_run_scan_sarif_prints_json_to_stdout(git_repo, capsys):
+    import json
+
+    _commit(git_repo, "bad.py", "eval(input())\n")
+
+    rc = run_scan(scope="all", output_format="sarif")
+    captured = capsys.readouterr()
+
+    assert rc == 1  # exit code still follows policy
+    doc = json.loads(captured.out)  # stdout is pure SARIF
+    assert doc["version"] == "2.1.0"
+    assert any(
+        r["ruleId"] == "semgrep.python-dangerous-eval"
+        for r in doc["runs"][0]["results"]
+    )
+    assert "[git-security-tool]" in captured.err  # progress went to stderr
+
+
+def test_baseline_then_scan_suppresses(git_repo, capsys):
+    from git_security.scan import write_baseline_file
+
+    _commit(git_repo, "legacy.py", "eval(input())\n")
+    assert write_baseline_file() == 0
+    subprocess.run(["git", "add", "-A"], cwd=git_repo, check=True)
+
+    # the pre-existing eval is now baselined -> scan passes
+    assert run_scan(scope="all") == 0

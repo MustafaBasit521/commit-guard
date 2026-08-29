@@ -25,6 +25,22 @@ def test_scan_parses_all_flag():
 def test_scan_defaults_to_staged():
     args = build_parser().parse_args(["scan"])
     assert args.scan_all is False
+    assert args.output_format == "text"
+
+
+def test_scan_accepts_sarif_format():
+    args = build_parser().parse_args(["scan", "--all", "--format", "sarif"])
+    assert args.output_format == "sarif"
+
+
+def test_scan_rejects_unknown_format():
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["scan", "--format", "xml"])
+
+
+def test_baseline_subcommand_parses():
+    args = build_parser().parse_args(["baseline"])
+    assert args.command == "baseline"
 
 
 def test_install_parses_force_flag():

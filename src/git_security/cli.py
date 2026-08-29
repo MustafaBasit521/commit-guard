@@ -9,7 +9,7 @@ import argparse
 
 from git_security import __version__
 from git_security.installer.git_hook import install, status, uninstall
-from git_security.scan import run_scan
+from git_security.scan import run_scan, write_baseline_file
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +28,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="scan_all",
         help="scan every tracked file in the working tree (for CI / audits)",
+    )
+    scan_parser.add_argument(
+        "--format",
+        choices=("text", "sarif"),
+        default="text",
+        dest="output_format",
+        help="output format (sarif goes to stdout for GitHub code scanning)",
+    )
+
+    subparsers.add_parser(
+        "baseline",
+        help="record current findings so future scans ignore them",
     )
 
     install_parser = subparsers.add_parser(
@@ -51,7 +63,12 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     if args.command == "scan":
-        return run_scan(scope="all" if args.scan_all else "staged")
+        return run_scan(
+            scope="all" if args.scan_all else "staged",
+            output_format=args.output_format,
+        )
+    if args.command == "baseline":
+        return write_baseline_file()
     if args.command == "install":
         return install(force=args.force)
     if args.command == "uninstall":

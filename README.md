@@ -31,7 +31,15 @@ git-security-tool install         # writes .git/hooks/pre-commit
 Gitleaks is a Go binary — install it separately if you want secret detection
 (the scan skips any tool that isn't on `PATH`).
 
-Commands: `scan`, `install [--force]`, `uninstall`, `check`, `version`.
+Commands: `scan [--all] [--format sarif]`, `baseline`, `install [--force]`,
+`uninstall`, `check`, `version`.
+
+- `scan` — staged changes (pre-commit)
+- `scan --all` — every tracked file (CI / audit); `--format sarif` emits SARIF
+  on stdout for GitHub code scanning
+- `baseline` — records current findings to `.git-security-tool-baseline.json`
+  so a repo can adopt the tool without fixing everything first; new issues
+  still block
 
 ## What it checks
 
