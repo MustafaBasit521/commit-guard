@@ -1,957 +1,279 @@
-# git-security-tool — System Architecture
+# git-security-tool — Architecture
 
-> **Status:** this is the original design doc. The project has since been
-> built through milestone 15; where this document and the code disagree, the
-> code and `README.md` are authoritative. A full reconciliation pass is
-> pending.
+This is the as-built reference. It also doubles as a design retrospective:
+each section explains **what** a piece does and **why** it ended up that way.
+For usage, see `README.md`.
 
-## 1. Project Overview
+---
 
-git-security-tool is a Linux-focused local Git security and code-quality tool.
+## 1. What it is
 
-Its primary purpose is to intercept a developer's local Git commit before the commit is created, analyze the staged code changes, detect potential security vulnerabilities, secrets, and code-quality problems, and provide actionable suggestions.
+A local Git **pre-commit gate** for Linux. On `git commit` it scans the
+*staged* changes; if policy says a finding is serious enough, the commit is
+aborted (`exit 1`). The same engine runs in CI over the whole repo.
 
-The tool operates locally on the developer's machine and does not require GitHub for its core functionality.
+It is an **orchestration layer**, not a scanner. Detection is delegated to
+three mature tools; this project decides what to scan, runs them, normalizes
+their output, applies policy, and reports.
 
-The project will later integrate with CI/CD so that the same security checks can be executed again after code is pushed to a remote repository.
-
-### Core idea
-
-```text
-Developer
-    │
-    │ git commit
-    ▼
-Git pre-commit hook
-    │
-    ▼
-git-security-tool
-    │
-    ├── Git Change Collector
-    ├── Security Scanner
-    ├── Secret Scanner
-    ├── Code Quality Scanner
-    ├── Analysis Engine
-    ├── Suggestion Engine
-    └── Reporter
-    │
-    ▼
-PASS / BLOCK
-    │
-    ▼
-Git commit
 ```
-
----
-
-# 2. Project Goals
-
-The main goals of git-security-tool are:
-
-1. Automatically inspect code before a local Git commit.
-2. Analyze only the changes relevant to the upcoming commit whenever possible.
-3. Detect potential security vulnerabilities.
-4. Detect accidentally committed secrets and credentials.
-5. Detect code-quality and formatting problems.
-6. Provide useful explanations for detected problems.
-7. Suggest secure or cleaner rewrites.
-8. Allow the developer to decide whether suggested fixes should be applied.
-9. Block commits when configured security thresholds are exceeded.
-10. Provide a simple CLI for installation and management.
-11. Package the tool so developers can install it through PyPI.
-12. Provide a CI/CD integration for remote validation.
-13. Use Docker to provide a reproducible environment for CI execution.
-
----
-
-# 3. Non-Goals
-
-The initial project will NOT attempt to:
-
-* Replace Git.
-* Replace GitHub.
-* Replace professional SAST platforms.
-* Replace a full IDE security analyzer.
-* Automatically modify source code without user approval.
-* Support every programming language.
-* Deploy a Kubernetes cluster.
-* Build a distributed security scanning platform.
-* Perform complete program verification.
-* Guarantee that code is completely secure.
-
-The tool should be practical and educational rather than attempting to compete with enterprise security platforms.
-
----
-
-# 4. High-Level Architecture
-
-git-security-tool consists of two major execution environments:
-
-## Local Environment
-
-Used during:
-
-```text
 git commit
+  └─► .git/hooks/pre-commit  (3-line shell shim)
+       └─► git-security-tool scan
+            ├─ ruff check         → lint            (LOW  → warn)
+            ├─ ruff format --check → formatting     (LOW  → warn)
+            ├─ semgrep + 17 rules → insecure code   (HIGH/MEDIUM)
+            └─ gitleaks           → secrets         (CRITICAL → block)
+                 └─► policy.evaluate() → Decision
+                      └─► exit 0 (allow) | exit 1 (block)
 ```
 
-Architecture:
-
-```text
-Developer
-    │
-    ▼
-git add
-    │
-    ▼
-git commit
-    │
-    ▼
-.git/hooks/pre-commit
-    │
-    ▼
-git-security-tool CLI
-    │
-    ▼
-Git Change Collector
-    │
-    ├──────────────┐
-    ▼              ▼
-Staged Files    Staged Diff
-    │              │
-    └──────┬───────┘
-           ▼
-      Scan Pipeline
-           │
-     ┌─────┼──────────────┐
-     ▼     ▼              ▼
- Semgrep Gitleaks        Ruff
-     │     │              │
-     └─────┼──────────────┘
-           ▼
-     Analysis Engine
-           │
-           ▼
-    Suggestion Engine
-           │
-           ▼
-        Reporter
-           │
-       ┌───┴───┐
-       ▼       ▼
-     PASS     FAIL
-       │       │
-       ▼       ▼
-    Commit   Block
-```
+Core design rule, held throughout: **the exit code is the entire control
+mechanism.** Everything else is logic for choosing between `0` and `1`.
 
 ---
 
-# 5. CI/CD Environment
+## 2. Package layout
 
-After the local workflow is implemented, git-security-tool will also operate inside CI.
-
-The purpose is to provide a second security layer because local Git hooks can be bypassed.
-
-For example:
-
-```bash
-git commit --no-verify
+```
+src/git_security/
+├── __main__.py         python -m git_security  → cli.main()
+├── cli.py              argparse; dispatch to an action; return an exit code
+├── scan.py             the pipeline: gather → scan → policy → report → exit
+│
+├── git/
+│   ├── repository.py   run_git() — the ONLY place that shells to git
+│   ├── diff.py         staged files, staged diff, materialize_staged, ls-files
+│   └── hooks.py        resolve this repo's hooks dir / pre-commit path
+│
+├── scanners/
+│   ├── base.py         run_tool() (missing-tool tolerant), to_repo_relative()
+│   ├── ruff.py         run_ruff (lint) + run_ruff_format  → list[Finding]
+│   ├── gitleaks.py     run_gitleaks(staged=…)             → list[Finding]
+│   └── semgrep.py      run_semgrep(files, root, rules_dir) → list[Finding]
+│
+├── models/finding.py   Severity (IntEnum) + Finding (frozen dataclass)
+├── policy/engine.py    PolicyConfig, Decision, evaluate()
+├── config/loader.py    .git-security-tool.toml → Config (+ ConfigError)
+├── ignore.py           glob/prefix path-ignore matching
+├── baseline.py         suppress findings already recorded in a baseline file
+│
+├── reporter/
+│   ├── terminal.py     Decision → human text
+│   └── sarif.py        findings → SARIF 2.1.0 JSON (for CI code scanning)
+│
+├── installer/
+│   ├── git_hook.py     install / uninstall / status; the managed hook text
+│   └── dependencies.py which scanners are on PATH
+│
+├── suggestions/
+│   ├── llm.py          optional AI explanation of blocking findings
+│   └── providers.py    AnthropicProvider, GeminiProvider (same 4 methods)
+│
+└── rules/semgrep/*.yml  17 bundled rules, shipped as package data
 ```
 
-can bypass a local pre-commit hook.
-
-Therefore, CI should independently validate the pushed code.
-
-Architecture:
-
-```text
-Developer
-    │
-    ▼
-git push
-    │
-    ▼
-GitHub
-    │
-    ▼
-GitHub Actions
-    │
-    ▼
-CI Environment
-    │
-    ▼
-git-security-tool
-    │
-    ├── Security scan
-    ├── Secret scan
-    ├── Code-quality scan
-    └── Tests
-    │
-    ▼
-PASS / FAIL
-```
+**Why a package and not one file:** every module has one job and one reason
+to change. `cli.py` reads like a table of contents; `scan.py` is pure
+orchestration; each scanner owns exactly one tool's quirks. Adding a
+capability is usually one new module + one line in `scan.py`.
 
 ---
 
-# 6. Docker Architecture
-
-Docker will primarily be used for CI/CD and reproducible execution.
-
-The local CLI does not need to run inside Docker for every commit.
-
-### Local
-
-```text
-Developer machine
-    │
-    ├── Git
-    ├── Python
-    ├── git-security-tool
-    ├── Semgrep
-    ├── Gitleaks
-    └── Ruff
-```
-
-### CI
-
-```text
-GitHub Actions
-       │
-       ▼
-Docker Container
-       │
-       ├── Python
-       ├── git-security-tool
-       ├── Semgrep
-       ├── Gitleaks
-       └── Ruff
-```
-
-The Docker image provides a predictable environment so that CI does not depend on the exact configuration of an individual developer's machine.
-
----
-
-# 7. CI/CD Pipeline
-
-The planned CI/CD pipeline is:
-
-```text
-Developer
-    │
-    ▼
-git push
-    │
-    ▼
-GitHub
-    │
-    ▼
-GitHub Actions
-    │
-    ├── Checkout repository
-    │
-    ├── Install dependencies
-    │
-    ├── Run tests
-    │
-    ├── Run git-security-tool
-    │      │
-    │      ├── Semgrep
-    │      ├── Gitleaks
-    │      └── Ruff
-    │
-    ├── Build Docker image
-    │
-    └── Push image to container registry
-```
-
-Deployment may be added later, but it is not required for the first version.
-
----
-
-# 8. CLI Architecture
-
-git-security-tool will expose a command-line interface.
-
-Example commands:
-
-```bash
-git-security-tool install
-git_security uninstall
-git_security scan
-git_security check
-git_security init
-git_security version
-git_security --help
-```
-
-### `git-security-tool install`
-
-Installs/configures git-security-tool for the current Git repository.
-
-Expected behavior:
-
-1. Verify that the current directory belongs to a Git repository.
-2. Locate the repository's Git directory.
-3. Check required dependencies.
-4. Install/configure the pre-commit hook.
-5. Create or validate git-security-tool configuration.
-6. Display installation status.
-
-### `git-security-tool scan`
-
-Runs the analysis manually without requiring a Git commit.
-
-### `git-security-tool uninstall`
-
-Removes git-security-tool's Git integration from the repository.
-
-### `git-security-tool check`
-
-Checks whether git-security-tool is correctly configured.
-
-### `git-security-tool init`
-
-May eventually initialize project configuration and optional CI configuration.
-
----
-
-# 9. Git Integration
-
-git-security-tool uses Git Hooks rather than modifying Git itself.
-
-The primary hook is:
-
-```text
-pre-commit
-```
-
-The hook executes before the commit is created.
-
-Example flow:
-
-```text
-git commit
-    │
-    ▼
-Git invokes:
-.git/hooks/pre-commit
-    │
-    ▼
-git_security scan
-    │
-    ▼
-analysis
-    │
-    ▼
-exit code
-```
-
-Exit code:
-
-```text
-0 → allow commit
-non-zero → block commit
-```
-
-This mechanism is fundamental to the project.
-
----
-
-# 10. Accessing Committed Code
-
-git-security-tool does not wait for the commit to be created.
-
-Instead, it analyzes the code that is currently staged for the upcoming commit.
-
-Important Git commands include:
-
-```bash
-git status
-git diff
-git diff --cached
-git diff --cached --name-only
-git rev-parse --git-dir
-git rev-parse --is-inside-work-tree
-```
-
-The most important command is:
-
-```bash
-git diff --cached
-```
-
-because it shows changes currently staged for commit.
-
-Changed files can be obtained with:
-
-```bash
-git diff --cached --name-only
-```
-
-Python's `subprocess` module will initially be used to execute these commands.
-
----
-
-# 11. Scanner Architecture
-
-git-security-tool should not implement every security rule itself.
-
-Instead, it acts as an orchestration layer around specialized tools.
-
-Planned scanners:
-
-```text
-git-security-tool
-    │
-    ├── Semgrep
-    │     └── Security/static analysis
-    │
-    ├── Gitleaks
-    │     └── Secret detection
-    │
-    └── Ruff
-          └── Python code quality/linting
-```
-
-Each scanner should have a wrapper inside:
-
-```text
-src/git_security/scanners/
-```
-
-For example:
-
-```text
-semgrep.py
-gitleaks.py
-ruff.py
-```
-
-These modules are responsible for:
-
-* invoking the external tool
-* passing appropriate input
-* capturing output
-* handling errors
-* converting results into git-security-tool's internal finding format
-
----
-
-# 12. Finding Model
-
-Different scanners produce different output formats.
-
-git-security-tool should normalize those results into a common internal representation.
-
-Conceptually:
+## 3. The data flow
+
+### 3.1 Get the files
+
+`git/diff.py` provides three sources:
+
+| function | used by | returns |
+|---|---|---|
+| `get_staged_files()` | pre-commit (`scan`) | staged paths, `--diff-filter=ACM` (no deletions) |
+| `get_tracked_files()` | CI (`scan --all`) | `git ls-files` |
+| `materialize_staged(files, dest)` | pre-commit only | writes the **index** blob content into a temp dir via `git checkout-index` |
+
+**Why `materialize_staged`:** a commit is built from the *index*, not the
+working tree. Stage `x.py`, edit it again, and a working-tree scan would
+flag code that isn't being committed *and* miss code that is — the dangerous
+direction for a security gate. So `scan` (staged mode) copies the exact
+staged bytes to a throwaway dir and scans that. `scan --all` has no "staged"
+concept, so it scans the working tree in place. Gitleaks is Git-aware and
+scans the index itself (`gitleaks git --staged`), so it never needs the
+temp dir.
+
+`_copy_project_config()` also drops the repo's `pyproject.toml` / `ruff.toml`
+into the temp dir — scanners resolve config by walking up from each file, and
+a bare temp dir would make Ruff silently use built-in defaults.
+
+### 3.2 Run the scanners
+
+`scan._collect_findings(scope)` runs each enabled scanner through
+`_safe_scan()` — a wrapper that turns a scanner crash (`RuntimeError`) into
+a printed message + empty list, so one broken tool doesn't take down the
+commit with a traceback. A scanner that isn't installed is skipped silently
+by `base.run_tool()` returning `None`.
+
+### 3.3 Normalize — the `Finding` model
 
 ```python
-Finding(
-    tool="semgrep",
-    file="database.py",
-    line=42,
-    severity="HIGH",
-    category="SQL Injection",
-    message="Potential SQL injection vulnerability",
-    suggestion="Use parameterized queries"
-)
+@dataclass(frozen=True)
+class Finding:
+    tool: str; rule: str; severity: Severity
+    file: str; line: int; message: str
 ```
 
-The exact implementation may evolve.
-
-The important architectural principle is:
-
-> Scanner-specific output should not leak throughout the rest of the application.
-
-The analysis layer should work with git-security-tool's own normalized findings.
-
----
-
-# 13. Severity System
-
-git-security-tool should eventually classify findings using levels such as:
-
-```text
-CRITICAL
-HIGH
-MEDIUM
-LOW
-INFO
-```
-
-The project configuration can determine which severities block a commit.
-
-Example:
-
-```yaml
-security:
-  block_on:
-    - CRITICAL
-    - HIGH
-```
-
-Possible behavior:
-
-```text
-CRITICAL → block
-HIGH     → block
-MEDIUM   → warning
-LOW      → warning
-INFO     → informational
-```
-
-This should be configurable rather than hard-coded.
-
----
-
-# 14. Suggestion Engine
-
-The suggestion engine is responsible for turning findings into useful remediation advice.
-
-There should initially be two types of suggestions.
-
-## Rule-Based Suggestions
-
-Known problems can have predefined secure rewrites.
-
-Example:
-
-```text
-Problem:
-Hardcoded credential
-
-Suggested approach:
-Use an environment variable.
-```
-
-## AI-Based Suggestions
-
-An LLM may later be used to generate contextual explanations and code rewrites.
-
-Flow:
-
-```text
-Finding
-   │
-   ▼
-Relevant code
-   │
-   ▼
-Suggestion Engine
-   │
-   ▼
-LLM
-   │
-   ├── Explanation
-   ├── Secure rewrite
-   └── Reasoning
-```
-
-AI-generated changes should NOT automatically modify source files in the initial version.
-
-The tool should present the suggestion to the developer.
-
----
-
-# 15. Reporting
-
-The reporter converts findings into a developer-friendly terminal interface.
-
-Example:
-
-```text
-╭─────────────────────────────────────╮
-│       git-security-tool Security Scan     │
-╰─────────────────────────────────────╯
-
-Files analyzed: 3
-
-Security:
-  ❌ 1 HIGH
-  ⚠  1 MEDIUM
-
-Secrets:
-  ✓ No secrets detected
-
-Code Quality:
-  ⚠ 2 issues
-
-Commit blocked.
-
-Recommended actions:
-  • Remove hardcoded credential
-  • Fix formatting issues
-```
-
-The reporter should eventually support multiple formats:
-
-```text
-terminal
-JSON
-SARIF
-```
-
-Terminal output is the initial priority.
-
----
-
-# 16. Project Folder Structure
-
-The planned structure is:
-
-```text
-git_security/
-│
-├── .github/
-│   └── workflows/
-│       ├── ci.yml
-│       └── docker.yml
-│
-├── src/
-│   └── git_security/
-│       ├── __init__.py
-│       ├── cli.py
-│       │
-│       ├── git/
-│       │   ├── __init__.py
-│       │   ├── repository.py
-│       │   ├── diff.py
-│       │   └── hooks.py
-│       │
-│       ├── scanners/
-│       │   ├── __init__.py
-│       │   ├── semgrep.py
-│       │   ├── gitleaks.py
-│       │   └── ruff.py
-│       │
-│       ├── analysis/
-│       │   ├── __init__.py
-│       │   ├── findings.py
-│       │   ├── severity.py
-│       │   └── suggestions.py
-│       │
-│       ├── installer/
-│       │   ├── __init__.py
-│       │   ├── dependencies.py
-│       │   └── git_hook.py
-│       │
-│       └── reporter/
-│           ├── __init__.py
-│           └── terminal.py
-│
-├── rules/
-│   └── semgrep/
-│       └── custom-security.yml
-│
-├── tests/
-│   ├── test_git.py
-│   ├── test_scanners.py
-│   ├── test_analysis.py
-│   └── test_installer.py
-│
-├── Dockerfile
-├── .dockerignore
-├── pyproject.toml
-├── README.md
-├── LICENSE
-└── .gitignore
-```
-
----
-
-# 17. Python Packaging
-
-git-security-tool will be distributed as a Python package.
-
-The package metadata will be defined in:
-
-```text
-pyproject.toml
-```
-
-The package will eventually be published to PyPI.
-
-The intended user experience is:
-
-```bash
-pip install git-security-tool
-```
-
-followed by:
-
-```bash
-cd my-project
-git-security-tool install
-```
-
-The distinction is important:
-
-```text
-pip install git-security-tool
-        │
-        ▼
-Install git-security-tool CLI globally/environment-wide
-
-git-security-tool install
-        │
-        ▼
-Configure git-security-tool for the current Git repository
-```
-
----
-
-# 18. Dependency Philosophy
-
-Python dependencies should be declared through Python packaging.
-
-External CLI dependencies such as:
-
-```text
-Semgrep
-Gitleaks
-Ruff
-```
-
-should be detected by git-security-tool.
-
-The installer should provide clear information about missing dependencies.
-
-git-security-tool should never silently install arbitrary system software without user awareness.
-
----
-
-# 19. Docker
-
-Docker-related files should remain separate from the Python source code.
-
-Primary files:
-
-```text
-Dockerfile
-.dockerignore
-```
-
-The Docker image should provide the environment required for CI execution.
-
-The Docker image should be reproducible and version-controlled.
-
----
-
-# 20. CI/CD Files
-
-GitHub Actions workflows will live under:
-
-```text
-.github/workflows/
-```
-
-Example:
-
-```text
-ci.yml
-docker.yml
-```
-
-Responsibilities:
-
-### `ci.yml`
-
-* install dependencies
-* run tests
-* run git-security-tool
-* verify the project
-
-### `docker.yml`
-
-* build Docker image
-* optionally run validation
-* publish the image to a container registry
-
----
-
-# 21. Security Principles
-
-git-security-tool itself is a security-related tool, so its own implementation should follow secure development practices.
-
-Important principles:
-
-1. Never execute untrusted shell strings through a shell unnecessarily.
-2. Prefer argument lists with `subprocess.run()`.
-3. Validate paths.
-4. Avoid exposing secrets in terminal output.
-5. Do not send source code to an external LLM unless explicitly configured.
-6. Make AI functionality optional.
-7. Never automatically overwrite source files in the initial implementation.
-8. Treat scanner output as untrusted data.
-9. Use non-zero exit codes consistently.
-10. Test security-critical behavior.
-
-Example preferred pattern:
+Each scanner's `_to_finding()` converts its tool's native JSON into this.
+The three tools emit wildly different shapes:
+
+| | Ruff | Gitleaks | Semgrep |
+|---|---|---|---|
+| path key | `filename` (absolute) | `File` (relative) | `path` |
+| line | `location.row` | `StartLine` | `start.line` |
+| rule | `code` (can be null) | `RuleID` | `check_id` (path-namespaced) |
+| severity | *(none — assigned)* | *(none — CRITICAL)* | `extra.severity` (ERROR/WARNING/INFO) |
+
+Absorbing that asymmetry in one place per scanner is the whole point — from
+here on, policy and reporting see only `Finding`.
+
+`Severity` is an `IntEnum` so policy can write `f.severity >= threshold`
+directly (it's `4 >= 3` underneath) while still being a typo-proof named
+constant.
+
+### 3.4 Baseline + ignores
+
+Before policy:
+
+- `ignore.filter_ignored()` drops files matching `[ignore] paths` patterns
+  (`tests/fixtures/`, `*.generated.py`, …). Gitleaks findings are filtered
+  after the fact since it scans everything.
+- `baseline.apply_baseline()` removes findings whose
+  `(tool, rule, file, message)` fingerprint is already in
+  `.git-security-tool-baseline.json`. This lets an established repo adopt the
+  tool without a big-bang cleanup: existing issues are grandfathered, new
+  ones still block. The fingerprint deliberately excludes line number so
+  unrelated edits don't resurface a baselined finding.
+
+### 3.5 Policy
 
 ```python
-subprocess.run(
-    ["git", "diff", "--cached"],
-    capture_output=True,
-    text=True,
-    check=False
-)
+def evaluate(findings, config) -> Decision:
+    blocking = [f for f in findings if f.severity >= config.block_threshold]
+    warnings = [f for f in findings if f.severity <  config.block_threshold]
+    return Decision(blocked=bool(blocking), blocking=..., warnings=...)
 ```
 
-rather than constructing arbitrary shell commands.
+One pure function. No printing, no `sys.exit`, no subprocess — which is why
+it's trivially unit-tested with fake `Finding`s. `block_threshold` defaults
+to `HIGH` (secrets + RCE-class patterns block; style warns) and is
+overridable per repo.
+
+**Why a whole module for ten lines:** it is the single place blocking
+behaviour is defined. Per-directory thresholds, per-rule allowlists,
+"never block on Fridays" — all of that would land here, and scanners /
+`scan.py` wouldn't change.
+
+### 3.6 Report + exit
+
+- text mode → `reporter/terminal.py` groups warnings then blocking findings,
+  sorted by `(file, line, tool)`, long messages collapsed to one line.
+- sarif mode (`--format sarif`) → `reporter/sarif.py` prints SARIF 2.1.0 to
+  **stdout** (progress goes to stderr so the JSON is clean); CI uploads it
+  to GitHub code scanning.
+
+Then `run_scan` returns `0` or `1`. In staged mode, `GIT_SECURITY_NO_BLOCK=1`
+forces `0` while still reporting — the dev escape hatch (distinct from
+`git commit --no-verify`, which skips the hook entirely).
 
 ---
 
-# 22. Development Philosophy
+## 4. The other entry points
 
-The project should be implemented incrementally.
-
-Do not implement the complete architecture in one step.
-
-Recommended order:
-
-```text
-Phase 1
-Git fundamentals
-        ↓
-Phase 2
-Python subprocess
-        ↓
-Phase 3
-Read staged Git changes
-        ↓
-Phase 4
-Build pre-commit hook
-        ↓
-Phase 5
-Create basic CLI
-        ↓
-Phase 6
-Integrate Semgrep
-        ↓
-Phase 7
-Integrate Ruff
-        ↓
-Phase 8
-Integrate Gitleaks
-        ↓
-Phase 9
-Normalize findings
-        ↓
-Phase 10
-PASS/BLOCK logic
-        ↓
-Phase 11
-Terminal reporting
-        ↓
-Phase 12
-Package for PyPI
-        ↓
-Phase 13
-Docker
-        ↓
-Phase 14
-GitHub Actions CI/CD
-        ↓
-Phase 15
-AI suggestions
-```
-
-Each phase should be tested before moving to the next.
+- **`git-security-tool install`** — `installer/git_hook.py` writes a 3-line
+  shell shim to this repo's hooks dir (resolved via
+  `git rev-parse --git-path hooks`, so `core.hooksPath` / worktrees work).
+  The shim carries a marker comment; `install` refuses to overwrite a hook
+  it didn't write unless `--force`, and `uninstall` only removes its own.
+- **`git-security-tool baseline`** — runs a full-repo scan and writes every
+  current finding to the baseline file.
+- **`git-security-tool check`** — is the hook installed, which scanners are
+  present.
 
 ---
 
-# 23. Current Scope
+## 5. Optional AI suggestions
 
-The initial implementation is:
+Off by default. Enabled only when `[ai] enabled = true` **and** the provider's
+API key is set. `providers.py` has `AnthropicProvider` and `GeminiProvider`
+behind one 4-method shape (`name`, `default_model`, `available()`,
+`complete()`); `[ai] provider` picks one. Gemini uses stdlib `urllib` (no
+dependency); Anthropic needs `pip install ".[ai]"`.
 
-```text
-Linux
-Python
-Git
-Git Hooks
-Semgrep
-Gitleaks
-Ruff
-Docker
-GitHub Actions
-PyPI
-```
-
-Kubernetes is intentionally excluded from the current scope.
-
-Kubernetes may be considered only if the architecture later evolves into a centralized, distributed scanning service.
+Guarantees: it never changes the block decision, never writes files,
+announces before sending code to the API, and **never sends a file Gitleaks
+flagged** (a secret could be in the surrounding snippet).
 
 ---
 
-# 24. Target End-to-End Architecture
+## 6. Two defense layers
 
-The final planned system is:
+| | local | CI |
+|---|---|---|
+| trigger | `git commit` | `git push` / PR |
+| command | `git-security-tool scan` (staged) | `git-security-tool scan --all` |
+| bypass | `--no-verify`, or not installed | none |
+| purpose | fast feedback, before it's in history | enforcement nobody can skip |
 
-```text
-                         DEVELOPER
-                             │
-                             ▼
-                       Local Git Repo
-                             │
-                             ▼
-                         git commit
-                             │
-                             ▼
-                    pre-commit hook
-                             │
-                             ▼
-                       git-security-tool
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-           Semgrep        Gitleaks         Ruff
-              │              │              │
-              └──────────────┼──────────────┘
-                             ▼
-                       Analysis Engine
-                             │
-                             ▼
-                       Suggestion Engine
-                             │
-                             ▼
-                          Reporter
-                             │
-                       ┌─────┴─────┐
-                       ▼           ▼
-                     PASS         FAIL
-                       │           │
-                       ▼           ▼
-                    Commit       Block
-                       │
-                       ▼
-                    git push
-                       │
-                       ▼
-                     GitHub
-                       │
-                       ▼
-                GitHub Actions
-                       │
-                       ▼
-                     Docker
-                       │
-                       ▼
-                  git-security-tool
-                       │
-                ┌──────┼──────┐
-                ▼      ▼      ▼
-              Tests  Security Quality
-                │      │      │
-                └──────┼──────┘
-                       ▼
-                    CI PASS
-                       │
-                       ▼
-                 Docker Build
-                       │
-                       ▼
-               Container Registry
-```
+`.github/workflows/scan.reusable.yml` is a `workflow_call` reusable workflow
+so downstream repos reference it in three lines instead of copy-pasting.
 
-This architecture should evolve as implementation progresses rather than being treated as a rigid design.
+---
+
+## 7. Build history — milestone by milestone
+
+Each milestone was: explain the concept → smallest implementation → explain
+the code → test → next. The lesson each one carried:
+
+| # | Milestone | What it established |
+|---|---|---|
+| 1 | Hook runs a Python program | Git finds an executable `pre-commit`; exit 0/non-zero is the whole gate; hooks aren't version-controlled |
+| 2 | `subprocess` captures staged changes | argument lists (never `shell=True`); `git diff --cached` ≠ `git diff`; `CompletedProcess` |
+| 3 | Ruff wrapper | linter exit codes (1 = "found issues" is normal, not failure); JSON output over text scraping |
+| 4 | Gitleaks wrapper | a second tool with a different invocation model and a different JSON shape → motivates normalization |
+| 5 | `Finding` model + `scanners/base.py` | two concrete tool outputs = the right time to design the common one; extract the shared helper, keep the per-tool quirks |
+| 6 | Semgrep | source → AST → pattern match → structured finding; first tool with real severities; offline (`--metrics=off`) |
+| 7 | Policy engine | `Severity` becomes an ordered `IntEnum`; `evaluate()` is pure; **the exit code finally means something** |
+| 8 | Reporter module + pytest | pull presentation out of `main`; the pure policy/mapper code begs for tests |
+| 9 | Packaging | `pyproject.toml` (hatchling), `[project.scripts]` creates the command, rules ship as package data, `-e` editable install |
+| 10 | `install` / `uninstall` / `check` | the hook must be written per-repo; only ever touch a hook we created (marker + `--force`) |
+| 11 | Config file | `tomllib` (stdlib, 3.11+); reuse `PolicyConfig`; malformed config = clean message, not traceback |
+| 12 | Scan the staged blob | the accuracy bug: index vs working tree; `git checkout-index` to a temp dir; copy project config so scanners keep their settings |
+| 13 | Path ignores | `fnmatch` glob + directory prefix; filter Gitleaks findings after the fact |
+| 14 | `ruff format --check` | linting ≠ formatting; the tool must pass its own checks (reformatted the codebase) |
+| 15 | Optional AI | advisory only; opt-in; announce before sending; never send secret-bearing files |
+| — | Gemini provider | provider-pluggable behind one shape; stdlib `urllib` keeps core zero-dependency |
+| — | `scan --all` + CI | CI has no "staged" — scan tracked files in place; the second, unbypassable layer |
+| — | 17 Semgrep rules | injection / deserialization / crypto-TLS / web / filesystem-net; validated in CI |
+| — | Baseline + SARIF | adopt-on-a-dirty-repo; GitHub code-scanning integration |
+| — | Hardening | `ConfigError` handling, per-scanner isolation (`_safe_scan`), AI secret-leak guard, fixed Gitleaks 8.30 (`protect`/`detect` removed → `git --staged` / `dir`) |
+
+### Mistakes worth remembering
+
+- **`git reset --hard` on a commit that held real work** wiped milestone 7;
+  recovered from reflog. `--hard` discards commits *and* uncommitted changes.
+- **Staging a scratch file alongside real work** made the "undo the probe"
+  step also undo the milestone. Test with the probe unstaged, or `git add`
+  only the real files.
+- **`--amend` after pushing** diverged local/remote; fixed with
+  `push --force-with-lease` (safe here — solo repo).
+- **Ruff's shifting defaults** kept flagging our own code (`PLW1510`,
+  `TRY004`); fixed by pinning `[tool.ruff.lint] select`.
+
+---
+
+## 8. Scope boundaries
+
+Not in scope: dependency-CVE scanning, license checks, SBOM, IaC/container
+scanning, non-Python static analysis. The bundled Semgrep set is curated and
+small — not a replacement for the Semgrep registry or a full SAST platform.
+Kubernetes / microservices / a database were explicitly ruled out from day
+one and never needed.
