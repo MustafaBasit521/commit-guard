@@ -1,0 +1,46 @@
+name: git-security-tool scan
+
+# Reusable workflow. Other repos call it with:
+#
+#   jobs:
+#     security:
+#       uses: MustafaBasit521/commit-guard/.github/workflows/scan.reusable.yml@main
+#
+# Pin @v0.1.0 (or a commit SHA) instead of @main once the tool is tagged, so a
+# change to the tool can't unexpectedly break a downstream project's CI.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "git-security-tool version, branch, or SHA to install"
+        type: string
+        default: main
+      python-version:
+        type: string
+        default: "3.12"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install git-security-tool
+        run: >
+          pip install "git-security-tool[scanners] @
+          git+https://github.com/MustafaBasit521/commit-guard.git@${{ inputs.ref }}"
+
+      - name: Install gitleaks
+        run: |
+          url=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
+            | grep -o 'https://[^"]*linux_x64\.tar\.gz' | head -1)
+          curl -sL "$url" | tar xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan
+        run: git-security-tool scan --all
