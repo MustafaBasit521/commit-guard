@@ -18,7 +18,8 @@ import os
 import urllib.error
 import urllib.request
 
-_TIMEOUT = 30
+# Newer models spend time reasoning before answering; give them room.
+_TIMEOUT = 60
 _MAX_OUTPUT_TOKENS = 2048
 
 
@@ -54,7 +55,7 @@ class AnthropicProvider:
 
 class GeminiProvider:
     name = "gemini"
-    default_model = "gemini-2.5-flash"
+    default_model = "gemini-3.6-flash"  # override via [ai] model = "..."
     env_var = "GEMINI_API_KEY"
     _URL = (
         "https://generativelanguage.googleapis.com/v1beta/models/"

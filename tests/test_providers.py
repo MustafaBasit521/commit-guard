@@ -52,7 +52,7 @@ def test_gemini_complete_returns_text(monkeypatch):
             ]
         },
     )
-    out = GeminiProvider().complete("sys", "user", "gemini-2.5-flash")
+    out = GeminiProvider().complete("sys", "user", "gemini-3.6-flash")
     assert out == "use parameterized queries"
 
 
@@ -60,7 +60,7 @@ def test_gemini_complete_raises_when_blocked(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "k")
     _patch_urlopen(monkeypatch, {"promptFeedback": {"blockReason": "SAFETY"}})
     with pytest.raises(RuntimeError, match="SAFETY"):
-        GeminiProvider().complete("sys", "user", "gemini-2.5-flash")
+        GeminiProvider().complete("sys", "user", "gemini-3.6-flash")
 
 
 def test_gemini_complete_wraps_http_error(monkeypatch):
@@ -73,4 +73,4 @@ def test_gemini_complete_wraps_http_error(monkeypatch):
 
     monkeypatch.setattr("urllib.request.urlopen", _raise)
     with pytest.raises(RuntimeError, match="Gemini API error 400"):
-        GeminiProvider().complete("sys", "user", "gemini-2.5-flash")
+        GeminiProvider().complete("sys", "user", "gemini-3.6-flash")
