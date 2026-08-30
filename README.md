@@ -43,26 +43,82 @@ $ git commit -m "add config loader"
 GIT_SECURITY_NO_BLOCK=1 to override
 ```
 
-## Install
+## Add it to a project
+
+### 1. Install the tool (once per machine)
+
+The pre-commit hook runs `git-security-tool` from your `PATH`, so install it
+somewhere permanent — [pipx](https://pipx.pypa.io/) is cleanest:
 
 ```bash
-pip install "git-security-tool[scanners]"     # tool + ruff + semgrep
-cd your-repo
-git-security-tool install                     # writes .git/hooks/pre-commit
+pipx install "git-security-tool[scanners]"      # isolated, always on PATH
 ```
 
-Gitleaks is a Go binary — [install it](https://github.com/gitleaks/gitleaks#installing)
-separately for secret detection (the scan skips any tool that isn't on `PATH`).
+Or into a virtualenv you keep active / on `PATH`:
 
-Commands: `scan [--all] [--format sarif]`, `baseline`, `install [--force]`,
+```bash
+pip install "git-security-tool[scanners]"
+```
+
+Then add **Gitleaks** (a Go binary, not on PyPI) for secret detection —
+[download a release](https://github.com/gitleaks/gitleaks/releases) and put
+it on `PATH`. The scan silently skips any scanner that isn't installed.
+
+```bash
+git-security-tool check     # confirms hook status + which scanners are present
+```
+
+### 2. Turn on the hook (once per repo)
+
+```bash
+cd your-repo
+git-security-tool install               # writes .git/hooks/pre-commit
+```
+
+`.git/hooks/` is not version-controlled, so every clone / machine runs this
+once. `git-security-tool uninstall` removes it; `--force` replaces a hook
+you didn't create.
+
+### 3. (existing repo) Baseline what's already there
+
+```bash
+git-security-tool scan --all            # see what it finds first
+git-security-tool baseline              # grandfather those findings
+git add .git-security-tool-baseline.json && git commit -m "add security baseline"
+```
+
+New issues still block — only the pre-existing ones are ignored.
+
+### 4. Add the CI check
+
+Local hooks can be skipped (`--no-verify`) or missing on a teammate's
+machine, so CI is the real enforcement. Create
+`.github/workflows/security.yml`:
+
+```yaml
+name: security
+on: [push, pull_request]
+jobs:
+  security:
+    uses: MustafaBasit521/commit-guard/.github/workflows/scan.reusable.yml@main
+```
+
+That reusable workflow installs the tool + Gitleaks and runs
+`git-security-tool scan --all` over the whole repo.
+
+### 5. (optional) Tune it — `.git-security-tool.toml`
+
+See [Configuration](#configuration--git-security-tooltoml-optional-repo-root)
+below: severity threshold, disable a scanner, ignore paths, AI suggestions.
+
+---
+
+**Commands:** `scan [--all] [--format sarif]`, `baseline`, `install [--force]`,
 `uninstall`, `check`, `version`.
 
 - `scan` — staged changes (pre-commit)
 - `scan --all` — every tracked file (CI / audit); `--format sarif` emits SARIF
   on stdout for GitHub code scanning
-- `baseline` — records current findings to `.git-security-tool-baseline.json`
-  so an existing repo can adopt the tool without fixing everything first;
-  new issues still block
 
 Verify the ruleset end to end: `./scripts/probe.sh` (checks all 17 rules +
 secret detection in a throwaway repo).
@@ -112,21 +168,6 @@ to the API, and secret-bearing files are never sent.
 |---|---|---|
 | `gemini` | `GEMINI_API_KEY` | none (stdlib HTTP) |
 | `anthropic` | `ANTHROPIC_API_KEY` | `pip install "git-security-tool[ai]"` |
-
-## CI (the second layer)
-
-Local hooks can be skipped (`--no-verify`) or simply not installed on a
-teammate's machine, so CI is the enforcement layer. This repo ships a
-reusable workflow:
-
-```yaml
-# .github/workflows/security.yml in your project
-name: security
-on: [push, pull_request]
-jobs:
-  security:
-    uses: MustafaBasit521/commit-guard/.github/workflows/scan.reusable.yml@main
-```
 
 ## Overrides
 
