@@ -45,6 +45,10 @@ GIT_SECURITY_NO_BLOCK=1 to override
 
 ## Add it to a project
 
+> New to this? [**INSTALL.md**](INSTALL.md) is a slower, detailed walkthrough
+> with expected output and troubleshooting. The steps below are the short
+> version.
+
 ### 1. Install the tool (once per machine)
 
 The pre-commit hook runs `git-security-tool` from your `PATH`, so install it
